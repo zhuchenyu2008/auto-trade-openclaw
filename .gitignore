@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local runtime config
+config.json
+
+# Runtime state / audit logs
+state/*.json
+state/*.jsonl
+!state/.gitkeep
+
+# Local OKX / OpenClaw artifacts
+.okx/
+.openclaw/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

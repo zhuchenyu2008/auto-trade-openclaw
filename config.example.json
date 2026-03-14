@@ -1,0 +1,38 @@
+{
+  "source": {
+    "mode": "public_html",
+    "channels": ["demochan"],
+    "poll_interval_seconds": 5,
+    "max_recent_messages": 8
+  },
+  "okx": {
+    "profile": "demo",
+    "site": "global",
+    "instrument_scope": "swap",
+    "margin_mode": "cross",
+    "position_mode": "long_short_mode",
+    "default_leverage": "20",
+    "min_position_pct": 0.4,
+    "max_position_pct": 0.8,
+    "default_position_pct": 0.6,
+    "allowed_instruments": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+  },
+  "report": {
+    "channel": "telegram",
+    "target": "chat_or_group_id",
+    "thread_id": null,
+    "silent": true,
+    "enabled": false
+  },
+  "runtime": {
+    "execution_enabled": false,
+    "dry_run": true,
+    "state_path": "./state/state.json",
+    "okx_audit_path": "./state/okx_audit.jsonl"
+  },
+  "openclaw": {
+    "session_prefix": "tradeclaw",
+    "thinking": "high",
+    "timeout_seconds": 120
+  }
+}
