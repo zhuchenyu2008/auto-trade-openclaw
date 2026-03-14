@@ -139,7 +139,25 @@ state/.gitkeep
 
 ---
 
-## 5. 依赖
+## 5. 配套 skill
+
+仓库里额外带了一个 companion skill：
+
+- `skills/tg-okx-tradeclaw-ops/`
+
+它适合给另一个 OpenClaw 实例使用，用来：
+
+- 解释这套 TradeClaw 是怎么工作的
+- 检查为什么下单 / 没下单
+- 改杠杆、仓位范围、source channel、topic 目标、报告格式
+- 重置本地运行态并从“现在”重新建基线
+- 修改 topic 行为与 systemd / OpenClaw 配置
+
+也就是说：
+- **这个仓库**负责放项目代码
+- **这个 skill**负责放“怎么运维/改参/排障”
+
+## 6. 依赖
 
 ### 必要依赖
 
