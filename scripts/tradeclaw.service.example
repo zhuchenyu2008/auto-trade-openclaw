@@ -1,0 +1,17 @@
+[Unit]
+Description=TradeClaw TG channel -> OKX executor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/auto-trade-openclaw
+ExecStart=/usr/bin/python3 -m tradeclaw.cli --config /opt/auto-trade-openclaw/config.json
+Restart=always
+RestartSec=5
+Environment=PYTHONPATH=/opt/auto-trade-openclaw
+Environment=OPENCLAW_BIN=/usr/local/bin/openclaw
+Environment=OKX_BIN=/usr/local/bin/okx
+
+[Install]
+WantedBy=multi-user.target
