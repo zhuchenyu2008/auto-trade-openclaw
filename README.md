@@ -150,7 +150,8 @@ An editable install is optional, not required.
 5. Optionally set `telegram.report_topic` to a Telegram topic target like `-1001234567890:topic:123`. `telegram.operator_target` remains supported and overrides `report_topic` if both are set.
 The Web/config path also accepts topic links like `https://t.me/c/3720752566/2080` and normalizes them to the internal target form.
 The Telegram wiring form also shows whether the current bot token came from config or env, and it can explicitly clear a stored config token without touching env-based secrets.
-6. Keep `trading.position_mode="net"` in this build.
+6. If `ai.provider="openclaw"`, you can route this project through a dedicated OpenClaw agent by setting `ai.openclaw_agent_id` (for example `tgokxai`). This lets the project use a separate model/provider path from the main assistant session.
+7. Keep `trading.position_mode="net"` in this build.
 
 When the HTTP server is already running, changing `web.host` or `web.port` updates the stored config immediately but does not rebind the live listener. The dashboard and `verify` output now show both the active bind and whether a restart is required.
 

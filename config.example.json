@@ -29,6 +29,7 @@
   "ai": {
     "provider": "openclaw",
     "model": "default",
+    "openclaw_agent_id": "tgokxai",
     "thinking": "high",
     "timeout_seconds": 90,
     "system_prompt": "Extract trading intent from Telegram signals. Return strict JSON only. Do not invent fields."

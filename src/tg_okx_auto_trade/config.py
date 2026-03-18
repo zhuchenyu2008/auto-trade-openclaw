@@ -79,6 +79,7 @@ class TradingConfig:
 class AIConfig:
     provider: str = "openclaw"
     model: str = "default"
+    openclaw_agent_id: str = "main"
     thinking: str = "high"
     timeout_seconds: int = 90
     system_prompt: str = (

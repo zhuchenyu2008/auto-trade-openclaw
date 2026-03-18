@@ -45,8 +45,7 @@ class OpenClawAI:
             "openclaw",
             "agent",
             "--agent",
-            "main",
-            "--local",
+            self.config.ai.openclaw_agent_id,
             "--message",
             prompt,
             "--thinking",
@@ -249,24 +248,34 @@ class OpenClawAI:
 
     def _intent_from_payload(self, payload: dict[str, Any]) -> TradingIntent:
         required = {
-            "executable", "action", "symbol", "market_type", "side", "entry_type",
-            "size_mode", "size_value", "leverage", "margin_mode", "risk_level",
+            "executable", "action", "symbol", "risk_level",
             "require_manual_confirmation", "confidence", "reason"
         }
         missing = required - set(payload)
         if missing:
             raise AIError(f"AI output missing fields: {sorted(missing)}")
+        symbol = _normalize_intent_symbol(payload.get("symbol"))
+        action = str(payload["action"])
+        side = _normalize_side(payload.get("side"), action)
+        market_type = str(payload.get("market_type") or "swap")
+        entry_type = str(payload.get("entry_type") or "market")
+        size_mode = str(payload.get("size_mode") or "fixed_usdt")
+        size_value_raw = payload.get("size_value")
+        size_value = float(size_value_raw) if size_value_raw is not None else 100.0
+        leverage_raw = payload.get("leverage")
+        leverage = int(leverage_raw) if leverage_raw is not None else int(self.config.trading.default_leverage)
+        margin_mode = str(payload.get("margin_mode") or self.config.trading.margin_mode)
         return TradingIntent(
             executable=bool(payload["executable"]),
-            action=str(payload["action"]),
-            symbol=str(payload["symbol"]),
-            market_type=str(payload["market_type"]),
-            side=str(payload["side"]),
-            entry_type=str(payload["entry_type"]),
-            size_mode=str(payload["size_mode"]),
-            size_value=float(payload["size_value"]),
-            leverage=int(payload["leverage"]),
-            margin_mode=str(payload["margin_mode"]),
+            action=action,
+            symbol=symbol,
+            market_type=market_type,
+            side=side,
+            entry_type=entry_type,
+            size_mode=size_mode,
+            size_value=size_value,
+            leverage=leverage,
+            margin_mode=margin_mode,
             risk_level=str(payload["risk_level"]),
             tp=list(payload.get("tp", [])),
             sl=payload.get("sl"),
@@ -287,6 +296,30 @@ def _extract_json(raw: str) -> dict[str, Any]:
     if start < 0 or end < start:
         raise AIError("AI output did not contain JSON")
     return json.loads(raw[start : end + 1])
+
+
+def _normalize_intent_symbol(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if not text:
+        return ""
+    if re.fullmatch(r"[A-Z0-9]{2,15}-USDT-(SWAP|FUTURES)", text):
+        return text
+    if re.fullmatch(r"[A-Z0-9]{2,15}USDT", text):
+        return f"{text[:-4]}-USDT-SWAP"
+    if re.fullmatch(r"[A-Z0-9]{2,15}", text):
+        return f"{text}-USDT-SWAP"
+    return text
+
+
+def _normalize_side(side: Any, action: str) -> str:
+    value = str(side or "").strip().lower()
+    if value in {"buy", "sell", "flat"}:
+        return value
+    if action in {"open_short", "add_short", "reverse_to_short"}:
+        return "sell"
+    if action in {"close_all", "cancel_orders", "update_protection"}:
+        return "flat"
+    return "buy"
 
 
 def _extract_symbol(text: str) -> str | None:

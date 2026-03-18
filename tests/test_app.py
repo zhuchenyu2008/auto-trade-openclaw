@@ -37,7 +37,7 @@ CONFIG_TEMPLATE = {
         "readonly_close_only": False,
         "paused": False,
     },
-    "ai": {"provider": "heuristic", "model": "default", "thinking": "high", "timeout_seconds": 5, "system_prompt": "json"},
+    "ai": {"provider": "heuristic", "model": "default", "openclaw_agent_id": "main", "thinking": "high", "timeout_seconds": 5, "system_prompt": "json"},
     "telegram": {
         "bot_token": "",
         "bot_token_env": "TG_OKX_TELEGRAM_BOT_TOKEN",
@@ -1519,7 +1519,8 @@ class AppTests(unittest.TestCase):
         self.assertIn("token invalid", decision["raw"]["provider_error"])
 
     def test_run_openclaw_extracts_text_from_wrapped_json_payloads(self):
-        ai = OpenClawAI(self.runtime.config_manager.get())
+        updated = self.runtime.update_config({"ai": {"openclaw_agent_id": "tgokxai"}})
+        ai = OpenClawAI(updated)
         wrapped = {
             "runId": "123",
             "status": "ok",
@@ -1530,9 +1531,12 @@ class AppTests(unittest.TestCase):
             }
         }
         completed = subprocess.CompletedProcess(args=["openclaw"], returncode=0, stdout=json.dumps(wrapped), stderr="")
-        with mock.patch("subprocess.run", return_value=completed):
+        with mock.patch("subprocess.run", return_value=completed) as mocked:
             raw = ai._run_openclaw("prompt")
         self.assertIn('FARTCOIN-USDT-SWAP', raw)
+        called = mocked.call_args.args[0]
+        self.assertIn("tgokxai", called)
+        self.assertNotIn("--local", called)
 
     def test_provider_error_includes_raw_auth_failure_text(self):
         updated = self.runtime.update_config({"ai": {"provider": "openclaw"}})
@@ -1552,6 +1556,42 @@ class AppTests(unittest.TestCase):
             intent = ai.parse(message, [], {})
         self.assertEqual(intent.raw["parser_source"], "heuristic_fallback")
         self.assertIn("authentication token has been invalidated", intent.raw["provider_error"])
+
+    def test_openclaw_payload_defaults_missing_fields_and_normalizes_symbol(self):
+        updated = self.runtime.update_config({"ai": {"provider": "openclaw", "openclaw_agent_id": "tgokxai"}})
+        ai = OpenClawAI(updated)
+        wrapped = {
+            "runId": "123",
+            "status": "ok",
+            "result": {
+                "payloads": [
+                    {"text": '{"executable": false, "action": "open_long", "symbol": "FARTCOIN", "market_type": null, "side": "buy", "entry_type": "market", "size_mode": null, "size_value": null, "leverage": null, "margin_mode": null, "risk_level": "medium", "tp": [], "sl": null, "trailing": null, "require_manual_confirmation": true, "confidence": 0.96, "reason": "need more detail"}'}
+                ]
+            }
+        }
+        completed = subprocess.CompletedProcess(args=["openclaw"], returncode=0, stdout=json.dumps(wrapped), stderr="")
+        with mock.patch("subprocess.run", return_value=completed):
+            message = NormalizedMessage.from_public_web(
+                "lbeobhpreo",
+                "new",
+                {
+                    "channel_username": "lbeobhpreo",
+                    "message_id": 12007,
+                    "date": "2026-03-18T00:00:00+00:00",
+                    "text": "#FARTCOIN——市价多",
+                    "caption": "",
+                },
+            )
+            intent = ai.parse(message, [], {})
+        self.assertFalse(intent.executable)
+        self.assertTrue(intent.require_manual_confirmation)
+        self.assertEqual(intent.symbol, "FARTCOIN-USDT-SWAP")
+        self.assertEqual(intent.market_type, "swap")
+        self.assertEqual(intent.size_mode, "fixed_usdt")
+        self.assertEqual(intent.size_value, 100.0)
+        self.assertEqual(intent.leverage, 20)
+        self.assertEqual(intent.margin_mode, "isolated")
+        self.assertEqual(intent.raw["parser_source"], "openclaw")
 
     def test_capability_summary_warns_when_okx_demo_endpoint_is_unreachable(self):
         self.runtime.update_config(
