@@ -1593,6 +1593,38 @@ class AppTests(unittest.TestCase):
         self.assertEqual(intent.margin_mode, "isolated")
         self.assertEqual(intent.raw["parser_source"], "openclaw")
 
+    def test_openclaw_ignore_clears_ambiguous_short_symbol_and_defaults_risk_level(self):
+        updated = self.runtime.update_config({"ai": {"provider": "openclaw", "openclaw_agent_id": "tgokxai"}})
+        ai = OpenClawAI(updated)
+        wrapped = {
+            "runId": "124",
+            "status": "ok",
+            "result": {
+                "payloads": [
+                    {"text": '{"executable": false, "action": "ignore", "symbol": "M", "market_type": null, "side": null, "entry_type": null, "size_mode": null, "size_value": null, "leverage": null, "margin_mode": null, "risk_level": null, "tp": [], "sl": null, "trailing": null, "require_manual_confirmation": true, "confidence": 0.98, "reason": "ignore"}'}
+                ]
+            }
+        }
+        completed = subprocess.CompletedProcess(args=["openclaw"], returncode=0, stdout=json.dumps(wrapped), stderr="")
+        with mock.patch("subprocess.run", return_value=completed):
+            message = NormalizedMessage.from_public_web(
+                "lbeobhpreo",
+                "new",
+                {
+                    "channel_username": "lbeobhpreo",
+                    "message_id": 12008,
+                    "date": "2026-03-18T00:00:00+00:00",
+                    "text": "#M ，tp2止盈拿下👌",
+                    "caption": "",
+                },
+            )
+            intent = ai.parse(message, [], {})
+        self.assertFalse(intent.executable)
+        self.assertEqual(intent.action, "ignore")
+        self.assertEqual(intent.symbol, "")
+        self.assertEqual(intent.risk_level, "medium")
+        self.assertEqual(intent.side, "flat")
+
     def test_capability_summary_warns_when_okx_demo_endpoint_is_unreachable(self):
         self.runtime.update_config(
             {

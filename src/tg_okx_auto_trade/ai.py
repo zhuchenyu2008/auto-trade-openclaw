@@ -107,8 +107,18 @@ class OpenClawAI:
             "confidence": 0.75,
             "reason": "brief explanation"
         }
+        instructions = (
+            "Interpret terse channel shorthand using the system defaults unless the message explicitly overrides them. "
+            f"Default leverage is {self.config.trading.default_leverage}x. Default margin_mode is {self.config.trading.margin_mode}. "
+            "Default market_type is swap. Default entry_type is market. Default size_mode is fixed_usdt. Default size_value is 100. "
+            "If a message clearly expresses a fresh trade direction and symbol, you should usually keep executable=true and require_manual_confirmation=false even when those defaulted fields are omitted. "
+            "Use require_manual_confirmation=true only when the symbol or direction itself is ambiguous, or when the text is a management/update/broadcast message rather than a fresh entry. "
+            "For bare symbols like FARTCOIN, normalize to FARTCOIN-USDT-SWAP. For hashtag forms like #FARTCOIN, strip the hashtag and normalize the same way. "
+            "Messages about TP hit / SL hit / already in profit / holding / chatter should usually map to ignore unless they explicitly instruct a fresh open/add/reduce/reverse/close action."
+        )
         return (
             f"{self.config.ai.system_prompt}\n"
+            f"{instructions}\n"
             "Return a single JSON object with exactly these keys:\n"
             f"{json.dumps(schema, ensure_ascii=True)}\n"
             f"Message:\n{json.dumps(message.to_dict(), ensure_ascii=True)}\n"
@@ -265,6 +275,9 @@ class OpenClawAI:
         leverage_raw = payload.get("leverage")
         leverage = int(leverage_raw) if leverage_raw is not None else int(self.config.trading.default_leverage)
         margin_mode = str(payload.get("margin_mode") or self.config.trading.margin_mode)
+        risk_level = _normalize_risk_level(payload.get("risk_level"))
+        if action == "ignore" and (not symbol or _looks_ambiguous_symbol(symbol)):
+            symbol = ""
         return TradingIntent(
             executable=bool(payload["executable"]),
             action=action,
@@ -276,7 +289,7 @@ class OpenClawAI:
             size_value=size_value,
             leverage=leverage,
             margin_mode=margin_mode,
-            risk_level=str(payload["risk_level"]),
+            risk_level=risk_level,
             tp=list(payload.get("tp", [])),
             sl=payload.get("sl"),
             trailing=payload.get("trailing"),
@@ -317,9 +330,21 @@ def _normalize_side(side: Any, action: str) -> str:
         return value
     if action in {"open_short", "add_short", "reverse_to_short"}:
         return "sell"
-    if action in {"close_all", "cancel_orders", "update_protection"}:
+    if action in {"close_all", "cancel_orders", "update_protection", "ignore"}:
         return "flat"
     return "buy"
+
+
+def _normalize_risk_level(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"low", "medium", "high"}:
+        return text
+    return "medium"
+
+
+def _looks_ambiguous_symbol(symbol: str) -> bool:
+    token = symbol.upper().split("-USDT-")[0].split("USDT")[0]
+    return len(token) < 2
 
 
 def _extract_symbol(text: str) -> str | None:
