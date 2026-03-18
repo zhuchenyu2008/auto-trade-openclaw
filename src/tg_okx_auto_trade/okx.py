@@ -6,6 +6,7 @@ import hmac
 import json
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
@@ -168,7 +169,7 @@ class OKXGateway:
 
     def _request(self, method: str, path: str, body: Any | None = None) -> dict[str, Any]:
         api_key, api_secret, passphrase = resolve_okx_credentials(self.config)
-        body_text = json.dumps({} if body is None else body)
+        body_text = "" if body is None else json.dumps(body)
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
         prehash = f"{timestamp}{method}{path}{body_text if method != 'GET' else ''}"
         signature = base64.b64encode(
@@ -188,11 +189,39 @@ class OKXGateway:
         req.add_header("User-Agent", "tg-okx-auto-trade/1.0")
         if self.config.okx.use_demo:
             req.add_header("x-simulated-trading", "1")
+        request_data = None if method == "GET" else body_text.encode("utf-8")
         try:
-            with urllib.request.urlopen(req, data=body_text.encode("utf-8"), timeout=30) as response:
+            with urllib.request.urlopen(req, data=request_data, timeout=30) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raise RuntimeError(_okx_http_error_detail(method=method, path=path, exc=exc)) from exc
+
+    def sync_real_demo_position(self, symbol: str) -> dict[str, Any]:
+        current = (self._demo_positions.get(symbol) or {}).copy()
+        payload = self._request("GET", f"/api/v5/account/positions?instId={urllib.parse.quote(symbol)}")
+        if str(payload.get("code", "0")) != "0":
+            raise RuntimeError(_with_okx_environment_hint(payload.get("msg", "OKX demo positions query failed"), payload=payload))
+        rows = payload.get("data") or []
+        row = next((item for item in rows if str(item.get("instId", "")) == symbol), rows[0] if rows else {})
+        pos = float(row.get("pos") or 0.0)
+        side = "long" if pos > 0 else "short" if pos < 0 else "flat"
+        snapshot = {
+            "symbol": symbol,
+            "qty": abs(pos),
+            "side": side,
+            "avg_price": float(row.get("avgPx") or 0.0),
+            "margin_mode": str(row.get("mgnMode") or current.get("margin_mode") or self.config.trading.margin_mode),
+            "leverage": int(float(row.get("lever") or current.get("leverage") or self.config.trading.default_leverage)),
+            "realized_pnl": float(current.get("realized_pnl") or 0.0),
+            "unrealized_pnl": float(row.get("upl") or 0.0),
+            "protection": current.get("protection", {}) if abs(pos) > 0 else {},
+            "exchange_protection_orders": current.get("exchange_protection_orders", []) if abs(pos) > 0 else [],
+            "source": "exchange_polled",
+            "last_action": current.get("last_action", "sync_position"),
+            "updated_at": utc_now(),
+        }
+        self._demo_positions[symbol] = snapshot
+        return snapshot
 
     def positions(self) -> list[dict[str, Any]]:
         return [item.copy() for item in self._demo_positions.values()]

@@ -1691,12 +1691,33 @@ class Runtime:
         return result
 
     def close_positions(self, symbol: str | None = None) -> dict[str, Any]:
+        config = self.config_manager.get()
+        candidates = self.okx.positions()
+        if config.okx.enabled and config.okx.use_demo:
+            for item in list(candidates):
+                if str(item.get("source") or "") == "local_expected" and item.get("symbol"):
+                    refreshed = self.okx.sync_real_demo_position(str(item["symbol"]))
+                    self.storage.save_position_snapshot(str(item["symbol"]), refreshed)
+            candidates = self.okx.positions()
+
         positions = [
-            item for item in self.okx.positions()
+            item for item in candidates
             if float(item.get("qty", 0.0)) > 0 and item.get("side") in {"long", "short"}
         ]
         if symbol:
             positions = [item for item in positions if item.get("symbol") == symbol]
+        if not positions and symbol:
+            current = next((item for item in candidates if item.get("symbol") == symbol), None)
+            if current and float(current.get("qty", 0.0)) == 0.0:
+                self.log(
+                    "info",
+                    "execution",
+                    "Manual close skipped because exchange position is already flat",
+                    {"symbol": symbol},
+                    audit=True,
+                )
+                self._sync_runtime_artifacts()
+                return {"closed": [{"symbol": symbol, "status": "already_flat", "order_id": ""}]}
         if not positions:
             raise ValueError("No matching open position to close")
 

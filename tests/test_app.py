@@ -502,6 +502,56 @@ class AppTests(unittest.TestCase):
         self.assertEqual(snapshot["dashboard"]["positions_count"], 0)
         self.assertEqual(snapshot["dashboard"]["tracked_symbols_count"], 1)
 
+    def test_manual_close_returns_already_flat_when_polled_exchange_position_is_zero(self):
+        self.runtime.update_config(
+            {
+                "okx": {
+                    "enabled": True,
+                    "api_key": "api-key",
+                    "api_secret": "api-secret",
+                    "passphrase": "passphrase",
+                }
+            }
+        )
+        self.runtime.okx.restore_simulated_state(
+            [
+                {
+                    "symbol": "BTC-USDT-SWAP",
+                    "payload": {
+                        "symbol": "BTC-USDT-SWAP",
+                        "qty": 1.0,
+                        "side": "long",
+                        "avg_price": 100.0,
+                        "margin_mode": "isolated",
+                        "leverage": 20,
+                        "realized_pnl": 0.0,
+                        "unrealized_pnl": 0.0,
+                        "protection": {},
+                        "exchange_protection_orders": [],
+                        "source": "local_expected",
+                        "updated_at": "2026-03-18T00:00:00+00:00",
+                    },
+                }
+            ]
+        )
+
+        def fake_request(method, path, body=None):
+            self.assertEqual(method, "GET")
+            self.assertIn("/api/v5/account/positions?instId=BTC-USDT-SWAP", path)
+            return {
+                "code": "0",
+                "msg": "",
+                "data": [{"instId": "BTC-USDT-SWAP", "pos": "0", "posSide": "net", "mgnMode": "isolated", "lever": "20", "avgPx": "", "upl": "0"}],
+            }
+
+        with mock.patch.object(self.runtime.okx, "_request", side_effect=fake_request):
+            result = self.runtime.close_positions("BTC-USDT-SWAP")
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(result["closed"][0]["status"], "already_flat")
+        self.assertEqual(snapshot["positions"][0]["payload"]["qty"], 0.0)
+        self.assertEqual(snapshot["positions"][0]["payload"]["side"], "flat")
+        self.assertEqual(snapshot["positions"][0]["payload"]["source"], "exchange_polled")
+
     def test_manual_close_stays_simulated_for_simulated_positions_even_when_okx_demo_is_enabled(self):
         self.runtime.update_config(
             {
@@ -654,6 +704,7 @@ class AppTests(unittest.TestCase):
         def fake_urlopen(req, data=None, timeout=30):
             self.assertEqual(req.headers.get("User-agent"), "tg-okx-auto-trade/1.0")
             self.assertEqual(req.headers.get("X-simulated-trading"), "1")
+            self.assertIsNotNone(data)
 
             class _Response:
                 def __enter__(self_inner):
@@ -669,6 +720,39 @@ class AppTests(unittest.TestCase):
 
         with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
             payload = self.runtime.okx._request("POST", "/api/v5/account/set-leverage", {"instId": "BTC-USDT-SWAP"})
+        self.assertEqual(payload["code"], "0")
+
+    def test_real_demo_get_request_does_not_send_body(self):
+        self.runtime.update_config(
+            {
+                "okx": {
+                    "enabled": True,
+                    "api_key": "api-key",
+                    "api_secret": "api-secret",
+                    "passphrase": "passphrase",
+                }
+            }
+        )
+
+        def fake_urlopen(req, data=None, timeout=30):
+            self.assertEqual(req.headers.get("User-agent"), "tg-okx-auto-trade/1.0")
+            self.assertEqual(req.headers.get("X-simulated-trading"), "1")
+            self.assertIsNone(data)
+
+            class _Response:
+                def __enter__(self_inner):
+                    return self_inner
+
+                def __exit__(self_inner, exc_type, exc, tb):
+                    return False
+
+                def read(self_inner):
+                    return b'{"code":"0","msg":"","data":[]}'
+
+            return _Response()
+
+        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            payload = self.runtime.okx._request("GET", "/api/v5/account/positions?instId=BTC-USDT-SWAP")
         self.assertEqual(payload["code"], "0")
 
     def test_manual_inject_defaults_to_simulated_even_when_okx_demo_is_configured(self):
