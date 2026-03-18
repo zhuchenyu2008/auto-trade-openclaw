@@ -20,13 +20,25 @@ class OpenClawAI:
     def parse(self, message: NormalizedMessage, recent_messages: list[dict[str, Any]], account_state: dict[str, Any]) -> TradingIntent:
         prompt = self._build_prompt(message, recent_messages, account_state)
         if self.config.ai.provider == "heuristic":
-            return self._heuristic_parse(message)
+            intent = self._heuristic_parse(message)
+            intent.raw.setdefault("parser_source", "heuristic")
+            intent.raw.setdefault("requested_provider", self.config.ai.provider)
+            return intent
         try:
             raw = self._run_openclaw(prompt)
-            payload = _extract_json(raw)
+            try:
+                payload = _extract_json(raw)
+            except Exception as exc:
+                raise AIError(f"{exc}; raw={raw[:240]}") from exc
+            payload.setdefault("parser_source", self.config.ai.provider)
+            payload.setdefault("requested_provider", self.config.ai.provider)
             return self._intent_from_payload(payload)
-        except Exception:
-            return self._heuristic_parse(message)
+        except Exception as exc:
+            intent = self._heuristic_parse(message)
+            intent.raw["parser_source"] = "heuristic_fallback"
+            intent.raw["requested_provider"] = self.config.ai.provider
+            intent.raw["provider_error"] = f"{type(exc).__name__}: {exc}"
+            return intent
 
     def _run_openclaw(self, prompt: str) -> str:
         cmd = [
@@ -53,6 +65,27 @@ class OpenClawAI:
             value = payload.get(key)
             if isinstance(value, str) and value.strip():
                 return value
+        for container_key in ("result",):
+            container = payload.get(container_key)
+            if isinstance(container, dict):
+                nested_payloads = container.get("payloads")
+                if isinstance(nested_payloads, list):
+                    for item in nested_payloads:
+                        if isinstance(item, dict):
+                            text = item.get("text")
+                            if isinstance(text, str) and text.strip():
+                                return text
+                for key in ("reply", "message", "text", "output"):
+                    value = container.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value
+        nested_payloads = payload.get("payloads")
+        if isinstance(nested_payloads, list):
+            for item in nested_payloads:
+                if isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str) and text.strip():
+                        return text
         return result.stdout
 
     def _build_prompt(self, message: NormalizedMessage, recent_messages: list[dict[str, Any]], account_state: dict[str, Any]) -> str:

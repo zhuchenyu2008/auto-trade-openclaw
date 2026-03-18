@@ -1474,6 +1474,85 @@ class AppTests(unittest.TestCase):
         self.assertEqual(intent.action, "ignore")
         self.assertEqual(intent.symbol, "")
 
+    def test_non_heuristic_provider_records_fallback_metadata_when_ai_call_fails(self):
+        updated = self.runtime.update_config({"ai": {"provider": "openclaw"}})
+        ai = OpenClawAI(updated)
+        message = NormalizedMessage.from_public_web(
+            "lbeobhpreo",
+            "new",
+            {
+                "channel_username": "lbeobhpreo",
+                "message_id": 12004,
+                "date": "2026-03-18T00:00:00+00:00",
+                "text": "#FARTCOIN——市价多",
+                "caption": "",
+            },
+        )
+        with mock.patch.object(ai, "_run_openclaw", side_effect=RuntimeError("token invalid")):
+            intent = ai.parse(message, [], {})
+        self.assertEqual(intent.symbol, "FARTCOIN-USDT-SWAP")
+        self.assertEqual(intent.raw["parser_source"], "heuristic_fallback")
+        self.assertEqual(intent.raw["requested_provider"], "openclaw")
+        self.assertIn("token invalid", intent.raw["provider_error"])
+
+    def test_runtime_health_exposes_ai_fallback_reason(self):
+        self.runtime.update_config({"ai": {"provider": "openclaw"}})
+        message = NormalizedMessage.from_public_web(
+            "lbeobhpreo",
+            "new",
+            {
+                "channel_username": "lbeobhpreo",
+                "message_id": 12005,
+                "date": "2026-03-18T00:00:00+00:00",
+                "text": "#FARTCOIN——市价多",
+                "caption": "",
+            },
+        )
+        with mock.patch.object(self.runtime.ai, "_run_openclaw", side_effect=RuntimeError("token invalid")):
+            self.runtime.process_message(message)
+        snapshot = self.runtime.snapshot()
+        health = snapshot["health"]["openclaw_agent"]
+        decision = snapshot["ai_decisions"][0]["payload"]
+        self.assertEqual(health["status"], "heuristic_fallback")
+        self.assertIn("token invalid", health["detail"])
+        self.assertEqual(decision["raw"]["parser_source"], "heuristic_fallback")
+        self.assertIn("token invalid", decision["raw"]["provider_error"])
+
+    def test_run_openclaw_extracts_text_from_wrapped_json_payloads(self):
+        ai = OpenClawAI(self.runtime.config_manager.get())
+        wrapped = {
+            "runId": "123",
+            "status": "ok",
+            "result": {
+                "payloads": [
+                    {"text": '{"executable": true, "action": "open_long", "symbol": "FARTCOIN-USDT-SWAP", "market_type": "swap", "side": "buy", "entry_type": "market", "size_mode": "fixed_usdt", "size_value": 100.0, "leverage": 20, "margin_mode": "isolated", "risk_level": "medium", "tp": [], "sl": null, "trailing": null, "require_manual_confirmation": false, "confidence": 0.9, "reason": "ok"}'}
+                ]
+            }
+        }
+        completed = subprocess.CompletedProcess(args=["openclaw"], returncode=0, stdout=json.dumps(wrapped), stderr="")
+        with mock.patch("subprocess.run", return_value=completed):
+            raw = ai._run_openclaw("prompt")
+        self.assertIn('FARTCOIN-USDT-SWAP', raw)
+
+    def test_provider_error_includes_raw_auth_failure_text(self):
+        updated = self.runtime.update_config({"ai": {"provider": "openclaw"}})
+        ai = OpenClawAI(updated)
+        message = NormalizedMessage.from_public_web(
+            "lbeobhpreo",
+            "new",
+            {
+                "channel_username": "lbeobhpreo",
+                "message_id": 12006,
+                "date": "2026-03-18T00:00:00+00:00",
+                "text": "#FARTCOIN——市价多",
+                "caption": "",
+            },
+        )
+        with mock.patch.object(ai, "_run_openclaw", return_value="Your authentication token has been invalidated. Please try signing in again."):
+            intent = ai.parse(message, [], {})
+        self.assertEqual(intent.raw["parser_source"], "heuristic_fallback")
+        self.assertIn("authentication token has been invalidated", intent.raw["provider_error"])
+
     def test_capability_summary_warns_when_okx_demo_endpoint_is_unreachable(self):
         self.runtime.update_config(
             {

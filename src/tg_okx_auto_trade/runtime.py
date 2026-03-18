@@ -232,7 +232,12 @@ class Runtime:
             self.log("error", "ai", "AI parsing failed", {"error": str(exc), "chat_id": message.chat_id, "message_id": message.message_id})
             self._set_health("openclaw_agent", "error", str(exc))
             return
-        self._set_health("openclaw_agent", config.ai.provider, f"provider={config.ai.provider}")
+        parser_source = str(intent.raw.get("parser_source") or config.ai.provider)
+        provider_error = str(intent.raw.get("provider_error") or "")
+        health_detail = f"provider={config.ai.provider} parser={parser_source}"
+        if provider_error:
+            health_detail = f"{health_detail} fallback_error={provider_error}"
+        self._set_health("openclaw_agent", parser_source, health_detail)
         self.storage.save_ai_decision(message, config.ai.model, config.ai.thinking, intent.to_dict())
         self.storage.update_message_status(message.chat_id, message.message_id, message.version, "AI_PARSED")
         self.log("info", "ai", "AI decision produced", intent.to_dict())
