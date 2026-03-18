@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import threading
 import time
+from datetime import datetime, timezone
+from html.parser import HTMLParser
 import urllib.parse
 import urllib.request
 from typing import Any, Callable
 
 from .config import AppConfig, ChannelConfig, resolve_telegram_bot_token, resolve_topic_target, topic_target_parts
-from .models import NormalizedMessage
+from .models import NormalizedMessage, utc_now
 
 
 class TelegramWatcher:
@@ -27,25 +29,48 @@ class TelegramWatcher:
         self.offset = 0
         self._recent_messages: list[dict[str, Any]] = []
         self._message_versions: dict[tuple[str, int], dict[str, int]] = {}
+        self._public_web_state: dict[tuple[str, int], dict[str, Any]] = {}
 
     def run_forever(self, callback: Callable[[NormalizedMessage], None]) -> None:
         self.stop_event.clear()
         while not self.stop_event.is_set():
             config = self.config_getter()
             token = resolve_telegram_bot_token(config)
-            if not token:
+            enabled_bot_channels = [
+                channel
+                for channel in config.telegram.channels
+                if channel.enabled and channel.source_type == "bot_api"
+            ]
+            enabled_public_web_channels = [
+                channel
+                for channel in config.telegram.channels
+                if channel.enabled and channel.source_type == "public_web"
+            ]
+            if not token and not enabled_public_web_channels:
                 self._publish_health("idle", "telegram.bot_token not configured")
                 time.sleep(config.telegram.poll_interval_seconds)
                 continue
             try:
-                updates = self._get_updates(token, self.offset)
-                enabled_channels = [channel for channel in config.telegram.channels if channel.enabled and channel.source_type == "bot_api"]
+                if token:
+                    updates = self._get_updates(token, self.offset)
+                    for update in updates:
+                        self._process_update(update, callback, config)
+                if enabled_public_web_channels:
+                    self._poll_public_web_channels(enabled_public_web_channels, callback)
+                detail_parts: list[str] = []
+                if enabled_bot_channels:
+                    if token:
+                        detail_parts.append(f"{len(enabled_bot_channels)} enabled bot_api channel(s)")
+                    else:
+                        detail_parts.append(
+                            f"{len(enabled_bot_channels)} enabled bot_api channel(s), waiting for bot token"
+                        )
+                if enabled_public_web_channels:
+                    detail_parts.append(f"{len(enabled_public_web_channels)} enabled public_web channel(s)")
                 self._publish_health(
-                    "connected" if enabled_channels else "configured",
-                    f"{len(enabled_channels)} enabled bot_api channel(s)",
+                    "connected" if enabled_bot_channels or enabled_public_web_channels else "configured",
+                    ", ".join(detail_parts) if detail_parts else "No enabled Telegram channels",
                 )
-                for update in updates:
-                    self._process_update(update, callback, config)
             except Exception as exc:
                 self._publish_health("error", str(exc))
                 self.logger("error", "telegram", "Telegram watcher failed", {"error": str(exc)})
@@ -58,21 +83,28 @@ class TelegramWatcher:
         self.offset = 0
         self._recent_messages = []
         self._message_versions = {}
+        self._public_web_state = {}
 
     def reconcile_once(self, callback: Callable[[NormalizedMessage], None]) -> int:
         config = self.config_getter()
         token = resolve_telegram_bot_token(config)
-        if not token:
-            return 0
         replayed = 0
-        for channel in config.telegram.channels:
-            if not channel.enabled or channel.source_type != "bot_api":
-                continue
-            history = self._get_chat_history(token, channel)
-            for item in history:
-                event_type = "edit" if item.get("edit_date") else "new"
-                callback(self._normalize_message("bot_api", event_type, item))
-                replayed += 1
+        if token:
+            for channel in config.telegram.channels:
+                if not channel.enabled or channel.source_type != "bot_api":
+                    continue
+                history = self._get_chat_history(token, channel)
+                for item in history:
+                    event_type = "edit" if item.get("edit_date") else "new"
+                    callback(self._normalize_message("bot_api", event_type, item))
+                    replayed += 1
+        public_web_channels = [
+            channel
+            for channel in config.telegram.channels
+            if channel.enabled and channel.source_type == "public_web"
+        ]
+        if public_web_channels:
+            replayed += self._poll_public_web_channels(public_web_channels, callback)
         return replayed
 
     def _process_update(self, update: dict[str, Any], callback: Callable[[NormalizedMessage], None], config: AppConfig | None = None) -> bool:
@@ -188,3 +220,179 @@ class TelegramWatcher:
     def _publish_health(self, status: str, detail: str) -> None:
         if self.health_callback:
             self.health_callback(status, detail)
+
+    def _poll_public_web_channels(
+        self,
+        channels: list[ChannelConfig],
+        callback: Callable[[NormalizedMessage], None],
+    ) -> int:
+        emitted = 0
+        for channel in channels:
+            html = self._get_public_channel_html(channel.channel_username)
+            for post in parse_public_channel_html(channel.channel_username, html):
+                normalized = self._normalize_public_web_post(channel, post)
+                if normalized is None:
+                    continue
+                callback(normalized)
+                emitted += 1
+        return emitted
+
+    def _normalize_public_web_post(
+        self,
+        channel: ChannelConfig,
+        post: dict[str, Any],
+    ) -> NormalizedMessage | None:
+        key = (channel.id, int(post["message_id"]))
+        current = NormalizedMessage.from_public_web(
+            channel.channel_username,
+            "new",
+            post,
+            version=1,
+        )
+        state = self._public_web_state.get(key)
+        if state is None:
+            self._public_web_state[key] = {
+                "semantic_hash": current.semantic_hash,
+                "version": 1,
+            }
+            if channel.listen_new_messages:
+                self._remember_message(
+                    channel,
+                    {
+                        "message_id": post["message_id"],
+                        "date": _iso_to_timestamp(post["date"]),
+                        "text": post["text"],
+                        "caption": post["caption"],
+                        "chat": {
+                            "id": f"public:{channel.channel_username}",
+                            "username": channel.channel_username,
+                        },
+                    },
+                )
+                return current
+            return None
+        if state["semantic_hash"] == current.semantic_hash:
+            return None
+        version = int(state["version"]) + 1
+        self._public_web_state[key] = {
+            "semantic_hash": current.semantic_hash,
+            "version": version,
+        }
+        if not channel.listen_edits:
+            return None
+        updated = NormalizedMessage.from_public_web(
+            channel.channel_username,
+            "edit",
+            post,
+            version=version,
+            edit_date=utc_now(),
+        )
+        self._remember_message(
+            channel,
+            {
+                "message_id": post["message_id"],
+                "date": _iso_to_timestamp(post["date"]),
+                "edit_date": _iso_to_timestamp(updated.edit_date or updated.date),
+                "text": post["text"],
+                "caption": post["caption"],
+                "chat": {
+                    "id": f"public:{channel.channel_username}",
+                    "username": channel.channel_username,
+                },
+            },
+        )
+        return updated
+
+    def _get_public_channel_html(self, channel_username: str) -> str:
+        normalized_username = str(channel_username or "").strip().lstrip("@")
+        url = f"https://t.me/s/{urllib.parse.quote(normalized_username)}"
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; tg-okx-auto-trade/1.0)",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return response.read().decode("utf-8")
+
+
+class _PublicChannelHTMLParser(HTMLParser):
+    def __init__(self, default_channel_username: str):
+        super().__init__(convert_charrefs=True)
+        self.default_channel_username = default_channel_username
+        self.messages: list[dict[str, Any]] = []
+        self._current: dict[str, Any] | None = None
+        self._message_depth = 0
+        self._capture_text_depth = 0
+        self._text_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = {key: value or "" for key, value in attrs}
+        classes = set(attributes.get("class", "").split())
+        if self._current is None and tag == "div" and "tgme_widget_message" in classes and attributes.get("data-post"):
+            channel_username, _, raw_post_id = attributes["data-post"].partition("/")
+            if not raw_post_id.isdigit():
+                return
+            self._current = {
+                "channel_username": (channel_username or self.default_channel_username).strip().lstrip("@").lower(),
+                "message_id": int(raw_post_id),
+                "date": "",
+                "text": "",
+                "caption": "",
+            }
+            self._message_depth = 1
+            return
+        if self._current is None:
+            return
+        if tag == "br":
+            if self._capture_text_depth > 0:
+                self._text_parts.append("\n")
+            return
+        self._message_depth += 1
+        if tag == "div" and "tgme_widget_message_text" in classes and self._capture_text_depth == 0:
+            self._capture_text_depth = 1
+            self._text_parts = []
+            return
+        if self._capture_text_depth > 0:
+            self._capture_text_depth += 1
+        if tag == "time" and attributes.get("datetime"):
+            self._current["date"] = _normalize_public_datetime(attributes["datetime"])
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._current is None:
+            return
+        if self._capture_text_depth > 0:
+            self._capture_text_depth -= 1
+            if self._capture_text_depth == 0:
+                text = _clean_public_text("".join(self._text_parts))
+                self._current["text"] = text
+                self._text_parts = []
+        self._message_depth -= 1
+        if self._message_depth == 0:
+            if self._current.get("date") and (self._current.get("text") or self._current.get("caption")):
+                self.messages.append(self._current)
+            self._current = None
+
+    def handle_data(self, data: str) -> None:
+        if self._capture_text_depth > 0:
+            self._text_parts.append(data)
+
+
+def parse_public_channel_html(channel_username: str, html: str) -> list[dict[str, Any]]:
+    parser = _PublicChannelHTMLParser(channel_username)
+    parser.feed(html)
+    parser.close()
+    return sorted(parser.messages, key=lambda item: int(item["message_id"]))
+
+
+def _normalize_public_datetime(value: str) -> str:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _clean_public_text(value: str) -> str:
+    lines = [line.rstrip() for line in value.replace("\xa0", " ").splitlines()]
+    return "\n".join(lines).strip()
+
+
+def _iso_to_timestamp(value: str) -> int:
+    return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())

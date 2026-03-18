@@ -83,6 +83,48 @@ class NormalizedMessage:
         ).hexdigest()
         return cls(**payload)
 
+    @classmethod
+    def from_public_web(
+        cls,
+        channel_username: str,
+        event_type: str,
+        message: dict[str, Any],
+        *,
+        version: int = 1,
+        edit_date: str | None = None,
+    ) -> "NormalizedMessage":
+        payload = {
+            "source": "telegram",
+            "adapter": "public_web",
+            "chat_id": f"public:{channel_username}",
+            "message_id": int(message["message_id"]),
+            "event_type": event_type,
+            "version": version,
+            "date": _normalize_iso_datetime(str(message["date"])),
+            "edit_date": _normalize_iso_datetime(edit_date) if edit_date else None,
+            "text": str(message.get("text", "") or "").strip(),
+            "caption": str(message.get("caption", "") or "").strip(),
+            "media": [],
+            "entities": [],
+            "reply_to": None,
+            "forward_from": None,
+        }
+        raw_body = json.dumps(message, sort_keys=True, ensure_ascii=True)
+        payload["raw_hash"] = hashlib.sha256(raw_body.encode("utf-8")).hexdigest()
+        payload["semantic_hash"] = hashlib.sha256(
+            json.dumps(
+                {
+                    "chat_id": payload["chat_id"],
+                    "message_id": payload["message_id"],
+                    "text": payload["text"],
+                    "caption": payload["caption"],
+                    "media": payload["media"],
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        return cls(**payload)
+
 
 @dataclass
 class TradingIntent:
@@ -128,3 +170,8 @@ def _extract_media(message: dict[str, Any]) -> list[dict[str, Any]]:
         if field_name in message:
             media.append({"type": field_name, "value": message[field_name]})
     return media
+
+
+def _normalize_iso_datetime(value: str) -> str:
+    normalized = value.strip().replace("Z", "+00:00")
+    return datetime.fromisoformat(normalized).astimezone(timezone.utc).replace(microsecond=0).isoformat()

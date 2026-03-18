@@ -119,7 +119,7 @@ This local demo config is prewired for:
 - operator topic link `https://t.me/c/3720752566/2080`
 - demo-only trading guardrails
 
-This local demo profile is ready for Web control, config persistence, runtime artifacts, manual demo injection, and the configured OKX demo REST path. It is not yet ready for automatic source-channel ingestion because `config.demo.local.json` still needs a Telegram bot token plus at least one enabled `bot_api` source channel.
+This local demo profile is ready for Web control, config persistence, runtime artifacts, manual demo injection, and the configured OKX demo REST path. Automatic source-channel ingestion can now run either through a Telegram bot token + enabled `bot_api` source channel, or through an enabled public-channel webpage source using `source_type="public_web"` with `channel_username` set to a public Telegram channel.
 
 The bundled local Web PIN is `123456`.
 
@@ -145,7 +145,7 @@ An editable install is optional, not required.
    - or export `TG_OKX_WEB_PIN=123456`
    - or set `web.pin_hash` to a SHA256 hash of the PIN
 2. Add Telegram channels under `telegram.channels`.
-3. Set `telegram.bot_token` before expecting live polling, or export `TG_OKX_TELEGRAM_BOT_TOKEN`.
+3. For `bot_api` polling, set `telegram.bot_token` or export `TG_OKX_TELEGRAM_BOT_TOKEN`. For public-channel webpage polling, configure an enabled `telegram.channels[]` entry with `source_type="public_web"` and `channel_username` pointing at a public channel like `https://t.me/s/lbeobhpreo`.
 4. Leave `okx.enabled=false` unless you explicitly want the real OKX demo REST path.
 5. Optionally set `telegram.report_topic` to a Telegram topic target like `-1001234567890:topic:123`. `telegram.operator_target` remains supported and overrides `report_topic` if both are set.
 The Web/config path also accepts topic links like `https://t.me/c/3720752566/2080` and normalizes them to the internal target form.
@@ -156,18 +156,19 @@ When the HTTP server is already running, changing `web.host` or `web.port` updat
 
 For a real Telegram + OKX demo wiring path, the minimum config is:
 
-- `telegram.bot_token` set, or `TG_OKX_TELEGRAM_BOT_TOKEN` exported
-- at least one enabled `telegram.channels[]` entry with `source_type="bot_api"` and `chat_id` or `channel_username`
+- either:
+  - `telegram.bot_token` set (or `TG_OKX_TELEGRAM_BOT_TOKEN` exported) plus at least one enabled `telegram.channels[]` entry with `source_type="bot_api"`, or
+  - at least one enabled `telegram.channels[]` entry with `source_type="public_web"` and `channel_username` pointing at a public Telegram channel page such as `https://t.me/s/lbeobhpreo`
 - `okx.enabled=true`
 - `okx.use_demo=true`
 - `okx.api_key`, `okx.api_secret`, `okx.passphrase` set for OKX demo, or the env trio `TG_OKX_OKX_API_KEY`, `TG_OKX_OKX_API_SECRET`, `TG_OKX_OKX_PASSPHRASE`
 
-`verify` will warn when `mtproto` channels are configured, because this dependency-light build only actively consumes the Bot API watcher path.
+`verify` will warn when `mtproto` channels are configured, because this dependency-light build only actively consumes the Bot API watcher path and the public Telegram webpage watcher path.
 
 The runtime auto-loads a local `.env` next to the config file and the repository-root `.env` as fallback. Existing shell environment variables still win. Local `.env` changes are watched alongside `config.json`, so newly added demo bot tokens or OKX demo credentials can be picked up without persisting them into the config file.
 An example variable layout is included in `.env.example`.
 
-Example channel entry:
+Example `bot_api` channel entry:
 
 ```json
 {
@@ -192,10 +193,35 @@ Example channel entry:
 }
 ```
 
+Example `public_web` channel entry:
+
+```json
+{
+  "id": "koi-public",
+  "name": "koi public page",
+  "source_type": "public_web",
+  "chat_id": "",
+  "channel_username": "https://t.me/s/lbeobhpreo",
+  "enabled": true,
+  "priority": 100,
+  "parse_profile_id": "default",
+  "strategy_profile_id": "default",
+  "risk_profile_id": "default",
+  "paper_trading_enabled": true,
+  "live_trading_enabled": false,
+  "listen_new_messages": true,
+  "listen_edits": true,
+  "listen_deletes": false,
+  "reconcile_interval_seconds": 30,
+  "dedup_window_seconds": 3600,
+  "notes": "Public Telegram webpage polling"
+}
+```
+
 The channel editor also accepts:
 
 - `chat_id`: raw `-100...` ids or `https://t.me/c/<chat>/<message>` links
-- `channel_username`: `@name` or `https://t.me/name`
+- `channel_username`: `@name`, `https://t.me/name`, or `https://t.me/s/name` for `public_web`
 
 ## Inject a local test signal
 

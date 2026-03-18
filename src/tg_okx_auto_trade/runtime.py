@@ -145,8 +145,18 @@ class Runtime:
         self._refresh_trading_runtime_health(config)
         topic_status, topic_detail = self._topic_health_state(config)
         self._set_health("topic_logger", topic_status, topic_detail)
+        enabled_public_web_channels = [
+            channel for channel in config.telegram.channels if channel.enabled and channel.source_type == "public_web"
+        ]
         if not resolve_telegram_bot_token(config):
-            self._set_health("telegram_watcher", "idle", "telegram.bot_token not configured")
+            if enabled_public_web_channels:
+                self._set_health(
+                    "telegram_watcher",
+                    "configured",
+                    f"{len(enabled_public_web_channels)} enabled public_web channel(s)",
+                )
+            else:
+                self._set_health("telegram_watcher", "idle", "telegram.bot_token not configured")
         self.log("info", "config", "Configuration reloaded", {"mode": config.trading.mode}, audit=True)
         self._sync_runtime_artifacts()
 
@@ -407,6 +417,7 @@ class Runtime:
         current = config or self.config_manager.get()
         enabled_channels = [channel for channel in current.telegram.channels if channel.enabled]
         enabled_bot_channels = [channel for channel in enabled_channels if channel.source_type == "bot_api"]
+        enabled_public_web_channels = [channel for channel in enabled_channels if channel.source_type == "public_web"]
         enabled_mtproto_channels = [channel for channel in enabled_channels if channel.source_type == "mtproto"]
         telegram_bot_token = resolve_telegram_bot_token(current)
         action_support = self.okx.action_support()
@@ -417,8 +428,14 @@ class Runtime:
         topic_target = resolve_topic_target(current)
         topic_health = self.health_snapshot().get("topic_logger", {})
         topic_chat_id, topic_thread_id = topic_target_parts(topic_target, current.telegram.operator_thread_id)
-        if telegram_bot_token and enabled_bot_channels:
+        if telegram_bot_token and enabled_bot_channels and enabled_public_web_channels:
+            telegram_mode = "bot_api_and_public_web_polling"
+        elif telegram_bot_token and enabled_bot_channels:
             telegram_mode = "bot_api_polling"
+        elif enabled_public_web_channels and enabled_bot_channels:
+            telegram_mode = "public_web_polling_with_bot_api_configured_without_token"
+        elif enabled_public_web_channels:
+            telegram_mode = "public_web_polling"
         elif enabled_bot_channels:
             telegram_mode = "bot_api_configured_without_token"
         elif enabled_mtproto_channels:
@@ -493,6 +510,9 @@ class Runtime:
         artifact_paths = self.runtime_artifact_paths(config)
         enabled_bot_channels = [
             channel for channel in config.telegram.channels if channel.enabled and channel.source_type == "bot_api"
+        ]
+        enabled_public_web_channels = [
+            channel for channel in config.telegram.channels if channel.enabled and channel.source_type == "public_web"
         ]
         configured_channels = list(config.telegram.channels)
         web_login = f"http://{active_web_bind}/login"
@@ -570,13 +590,13 @@ class Runtime:
             activation_checklist.append(
                 "Optional operator topic: set `telegram.operator_target` to a topic target such as `https://t.me/c/3720752566/2080`."
             )
-        if not resolve_telegram_bot_token(config):
+        if not resolve_telegram_bot_token(config) and not enabled_public_web_channels:
             activation_checklist.append(
-                f"Add `telegram.bot_token` locally or export `{telegram_token_env}` before expecting inbound operator-topic commands or Telegram polling."
+                f"Add `telegram.bot_token` locally or export `{telegram_token_env}` before expecting inbound operator-topic commands or bot_api Telegram polling."
             )
-        if not enabled_bot_channels:
+        if not enabled_bot_channels and not enabled_public_web_channels:
             activation_checklist.append(
-                "Add at least one enabled `bot_api` source channel before expecting automatic source-channel ingestion."
+                "Add at least one enabled `bot_api` or `public_web` source channel before expecting automatic source-channel ingestion."
             )
         return {
             "repo_root": str(PROJECT_ROOT),
@@ -898,6 +918,9 @@ class Runtime:
         current = config or self.config_manager.get()
         enabled_channels = [channel for channel in current.telegram.channels if channel.enabled]
         enabled_bot_channels = [channel for channel in enabled_channels if channel.source_type == "bot_api"]
+        enabled_public_web_channels = [
+            channel for channel in enabled_channels if channel.source_type == "public_web"
+        ]
         topic_target = resolve_topic_target(current)
         telegram_bot_token = resolve_telegram_bot_token(current)
         openclaw_path = shutil.which("openclaw")
@@ -954,23 +977,43 @@ class Runtime:
             }
 
         missing_ingestion: list[str] = []
-        if not telegram_bot_token:
+        if not telegram_bot_token and not enabled_public_web_channels:
             missing_ingestion.append("telegram.bot_token")
-        if not enabled_bot_channels:
-            missing_ingestion.append("enabled bot_api channel")
+        if not enabled_bot_channels and not enabled_public_web_channels:
+            missing_ingestion.append("enabled bot_api/public_web channel")
         if missing_ingestion:
             telegram_status = {
                 "status": "blocked",
                 "detail": "Live Telegram ingestion is not ready: missing " + " + ".join(missing_ingestion) + ".",
                 "action": (
-                    "Configure Telegram Wiring, add at least one enabled bot_api channel in Web > Channels or config.telegram.channels, "
-                    f"and provide the bot token via config or {current.telegram.bot_token_env}."
+                    "Configure Telegram Wiring and add at least one enabled bot_api or public_web channel in Web > Channels or config.telegram.channels. "
+                    + (
+                        f"Provide the bot token via config or {current.telegram.bot_token_env} for bot_api polling."
+                        if not telegram_bot_token and not enabled_public_web_channels
+                        else "Use channel_username / https://t.me/s/<username> for public_web polling, or add a bot token for bot_api polling."
+                    )
                 ),
+            }
+        elif enabled_public_web_channels and not telegram_bot_token and not enabled_bot_channels:
+            telegram_status = {
+                "status": "ready",
+                "detail": (
+                    f"Public Telegram web polling is ready for {len(enabled_public_web_channels)} enabled public_web channel(s). "
+                    "A Telegram bot token is not required for automatic source-channel ingestion on this path."
+                ),
+                "action": "Start the runtime and watch for live new/edit events from the configured public channel pages.",
             }
         else:
             telegram_status = {
                 "status": "ready",
-                "detail": f"Telegram bot polling is ready for {len(enabled_bot_channels)} enabled bot_api channel(s).",
+                "detail": (
+                    f"Telegram polling is ready for {len(enabled_bot_channels)} enabled bot_api channel(s)"
+                    + (
+                        f" and {len(enabled_public_web_channels)} enabled public_web channel(s)."
+                        if enabled_public_web_channels
+                        else "."
+                    )
+                ),
                 "action": "Start the runtime and watch for live new/edit events from the configured channels.",
             }
 
@@ -1040,10 +1083,10 @@ class Runtime:
             }
 
         direct_use_missing: list[str] = []
-        if not telegram_bot_token:
+        if not telegram_bot_token and not enabled_public_web_channels:
             direct_use_missing.append("telegram.bot_token")
-        if not enabled_bot_channels:
-            direct_use_missing.append("enabled bot_api source channel")
+        if not enabled_bot_channels and not enabled_public_web_channels:
+            direct_use_missing.append("enabled bot_api/public_web source channel")
         if not topic_target:
             direct_use_missing.append("operator topic target")
         if current.trading.paused:
@@ -1069,7 +1112,7 @@ class Runtime:
             direct_use_profile = {
                 "status": "ready",
                 "detail": (
-                    "Web control, Telegram bot_api ingestion, operator-topic wiring, and demo-only execution are all configured "
+                    "Web control, Telegram ingestion, operator-topic wiring, and demo-only execution are all configured "
                     "for direct use in this build."
                 ),
                 "action": "Keep validation on demo/simulated paths only and start the runtime for live source-channel monitoring.",
@@ -1163,6 +1206,9 @@ class Runtime:
         current = config or self.config_manager.get()
         enabled_channels = [channel for channel in current.telegram.channels if channel.enabled]
         enabled_bot_channels = [channel for channel in enabled_channels if channel.source_type == "bot_api"]
+        enabled_public_web_channels = [
+            channel for channel in enabled_channels if channel.source_type == "public_web"
+        ]
         telegram_bot_token = resolve_telegram_bot_token(current)
         topic_target = resolve_topic_target(current)
         topic_health = self.health_snapshot().get("topic_logger", {})
@@ -1171,24 +1217,34 @@ class Runtime:
         gaps: list[dict[str, str]] = []
         okx_reachability = self._endpoint_reachability("okx_rest_base", current.okx.rest_base, enabled=current.okx.enabled)
 
-        if not telegram_bot_token:
+        if not telegram_bot_token and not enabled_public_web_channels:
             gaps.append(
                 {
                     "id": "telegram_bot_token",
                     "scope": "telegram",
                     "status": "open",
-                    "detail": "telegram.bot_token is not configured, so live Telegram polling is inactive.",
-                    "action": f"Add a bot token in config or export {current.telegram.bot_token_env} before expecting automatic source-channel ingestion.",
+                    "detail": "telegram.bot_token is not configured, so bot_api Telegram polling is inactive.",
+                    "action": f"Add a bot token in config or export {current.telegram.bot_token_env} before expecting bot_api source-channel ingestion.",
                 }
             )
-        if not enabled_bot_channels:
+        if not enabled_bot_channels and not enabled_public_web_channels:
             gaps.append(
                 {
                     "id": "telegram_source_channel",
                     "scope": "telegram",
                     "status": "open",
-                    "detail": "No enabled bot_api source channel is configured yet.",
-                    "action": "Add at least one enabled bot_api channel in Web > Channels or config.telegram.channels.",
+                    "detail": "No enabled bot_api or public_web source channel is configured yet.",
+                    "action": "Add at least one enabled bot_api or public_web channel in Web > Channels or config.telegram.channels.",
+                }
+            )
+        if enabled_public_web_channels and not telegram_bot_token:
+            gaps.append(
+                {
+                    "id": "telegram_operator_inbound_token",
+                    "scope": "telegram",
+                    "status": "partial",
+                    "detail": "Automatic source ingestion can run through public_web channels, but inbound operator-topic commands still need telegram.bot_token.",
+                    "action": f"Add a bot token in config or export {current.telegram.bot_token_env} if you want Telegram-side operator commands such as /status or /pause.",
                 }
             )
         if any(channel.source_type == "mtproto" and channel.enabled for channel in enabled_channels):
@@ -1203,7 +1259,7 @@ class Runtime:
             )
         delete_channels = [
             channel.id
-            for channel in enabled_bot_channels
+            for channel in enabled_bot_channels + enabled_public_web_channels
             if channel.listen_deletes
         ]
         if delete_channels:
@@ -1213,7 +1269,7 @@ class Runtime:
                     "scope": "telegram",
                     "status": "partial",
                     "detail": (
-                        "Some enabled bot_api channels request delete/revoke handling, "
+                        "Some enabled Telegram channels request delete/revoke handling, "
                         "but Telegram delete events are not implemented in this build: "
                         + ", ".join(delete_channels)
                         + "."
@@ -1870,18 +1926,33 @@ class Runtime:
             )
         enabled_channels = [channel for channel in config.telegram.channels if channel.enabled]
         enabled_bot_channels = [channel for channel in enabled_channels if channel.source_type == "bot_api"]
+        enabled_public_web_channels = [
+            channel for channel in enabled_channels if channel.source_type == "public_web"
+        ]
         unsupported_mtproto = [channel.id for channel in enabled_channels if channel.source_type == "mtproto"]
         delete_channels = [
             channel.id
-            for channel in enabled_bot_channels
+            for channel in enabled_bot_channels + enabled_public_web_channels
             if channel.listen_deletes
         ]
-        if telegram_bot_token and enabled_bot_channels:
+        if telegram_bot_token and enabled_bot_channels and enabled_public_web_channels:
+            add_check(
+                "telegram_watcher",
+                "pass",
+                f"{len(enabled_bot_channels)} enabled Telegram bot_api channel(s) and {len(enabled_public_web_channels)} enabled public_web channel(s)",
+            )
+        elif telegram_bot_token and enabled_bot_channels:
             add_check("telegram_watcher", "pass", f"{len(enabled_bot_channels)} enabled Telegram bot_api channel(s)")
+        elif enabled_public_web_channels:
+            add_check(
+                "telegram_watcher",
+                "pass",
+                f"{len(enabled_public_web_channels)} enabled public_web channel(s); automatic ingestion does not require telegram.bot_token on this path",
+            )
         elif enabled_bot_channels:
-            add_check("telegram_watcher", "warn", "Telegram polling is idle until bot_token is configured")
+            add_check("telegram_watcher", "warn", "Telegram bot_api polling is idle until bot_token is configured")
         else:
-            add_check("telegram_watcher", "warn", "No enabled bot_api channels configured; add one in Web > Channels or config.telegram.channels for live ingestion. Manual demo injection still works.")
+            add_check("telegram_watcher", "warn", "No enabled bot_api or public_web channels configured; add one in Web > Channels or config.telegram.channels for live ingestion. Manual demo injection still works.")
         if unsupported_mtproto:
             add_check("telegram_mtproto", "warn", f"Configured but not implemented in this build: {', '.join(unsupported_mtproto)}")
         if delete_channels:
@@ -2081,10 +2152,27 @@ class Runtime:
         return config.trading.mode == "observe" or config.trading.execution_mode == "observe"
 
     def _build_initial_health(self, config: AppConfig) -> dict[str, dict[str, str]]:
+        enabled_public_web_channels = [
+            channel for channel in config.telegram.channels if channel.enabled and channel.source_type == "public_web"
+        ]
+        telegram_status = (
+            "configured"
+            if resolve_telegram_bot_token(config) or enabled_public_web_channels
+            else "idle"
+        )
+        telegram_detail = (
+            "Watcher ready"
+            if resolve_telegram_bot_token(config)
+            else (
+                f"{len(enabled_public_web_channels)} enabled public_web channel(s)"
+                if enabled_public_web_channels
+                else "telegram.bot_token not configured"
+            )
+        )
         return {
             "telegram_watcher": {
-                "status": "idle" if not resolve_telegram_bot_token(config) else "configured",
-                "detail": "telegram.bot_token not configured" if not resolve_telegram_bot_token(config) else "Watcher ready",
+                "status": telegram_status,
+                "detail": telegram_detail,
                 "updated_at": utc_now(),
             },
             "okx_rest": {
@@ -2199,6 +2287,9 @@ class Runtime:
         topic_health_status = self.health_snapshot().get("topic_logger", {}).get("status")
         enabled_channels = [channel for channel in current.telegram.channels if channel.enabled]
         enabled_bot_channels = [channel for channel in enabled_channels if channel.source_type == "bot_api"]
+        enabled_public_web_channels = [
+            channel for channel in enabled_channels if channel.source_type == "public_web"
+        ]
 
         next_steps: list[str] = []
         next_steps.append(f"Verify local readiness with `{paths['verify_command']}`.")
@@ -2224,13 +2315,13 @@ class Runtime:
             next_steps.append(
                 f"Web config changed to {paths['configured_web_login']} but the running server is still bound to {paths['web_login']}; restart `serve` to apply the new bind address."
             )
-        if not telegram_bot_token:
+        if not telegram_bot_token and not enabled_public_web_channels:
             next_steps.append(
                 f"Add `telegram.bot_token` or export `{current.telegram.bot_token_env}` before expecting live Telegram polling."
             )
-        if not enabled_bot_channels:
+        if not enabled_bot_channels and not enabled_public_web_channels:
             next_steps.append(
-                "Add at least one enabled `bot_api` Telegram channel entry before expecting live signal ingestion. Manual Web/CLI demo injection already works without a Telegram source channel. The Web channel form accepts chat ids, @usernames, `https://t.me/<username>`, and `https://t.me/c/<chat>/<message>` links."
+                "Add at least one enabled `bot_api` Telegram channel entry or enabled `public_web` Telegram channel entry before expecting live signal ingestion. Manual Web/CLI demo injection already works without a Telegram source channel. The Web channel form accepts chat ids, @usernames, `https://t.me/<username>`, and public pages such as `https://t.me/s/<username>`."
             )
         if current.trading.paused:
             next_steps.append("Trading is paused. Resume from Web or call the runtime resume action after fixing the underlying issue.")
@@ -2275,11 +2366,12 @@ def _normalize_channel_payload(payload: dict[str, Any]) -> dict[str, Any]:
     channel_id = _slugify_channel_id(base_id)
     if not channel_id:
         raise ValueError("Channel id could not be derived; provide id, username, chat_id, or name")
+    source_type = str(payload.get("source_type", "bot_api") or "bot_api").strip()
     return {
         "id": channel_id,
         "name": str(payload.get("name", "") or channel_username or chat_id or channel_id).strip(),
-        "source_type": str(payload.get("source_type", "bot_api") or "bot_api").strip(),
-        "chat_id": chat_id,
+        "source_type": source_type,
+        "chat_id": "" if source_type == "public_web" else chat_id,
         "channel_username": channel_username,
         "enabled": bool(payload.get("enabled", True)),
         "priority": int(payload.get("priority", 100)),

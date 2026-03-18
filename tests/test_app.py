@@ -14,6 +14,7 @@ from unittest import mock
 from tg_okx_auto_trade.config import hash_pin
 from tg_okx_auto_trade.models import NormalizedMessage, TradingIntent
 from tg_okx_auto_trade.runtime import Runtime
+from tg_okx_auto_trade.telegram import parse_public_channel_html
 from tg_okx_auto_trade.web import WebController
 
 
@@ -137,6 +138,28 @@ class AppTests(unittest.TestCase):
             "text": text,
             "message_thread_id": thread_id,
             "chat": {"id": -1003720752566, "username": "smallclaw"},
+        }
+
+    def _public_web_channel(self, *, channel_username="lbeobhpreo", enabled=True):
+        return {
+            "id": channel_username,
+            "name": f"Public {channel_username}",
+            "source_type": "public_web",
+            "chat_id": "",
+            "channel_username": channel_username,
+            "enabled": enabled,
+            "priority": 100,
+            "parse_profile_id": "default",
+            "strategy_profile_id": "default",
+            "risk_profile_id": "default",
+            "paper_trading_enabled": True,
+            "live_trading_enabled": False,
+            "listen_new_messages": True,
+            "listen_edits": True,
+            "listen_deletes": False,
+            "reconcile_interval_seconds": 30,
+            "dedup_window_seconds": 3600,
+            "notes": "",
         }
 
     def test_default_leverage_is_20(self):
@@ -924,6 +947,21 @@ class AppTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.runtime.update_config({"trading": {"execution_mode": "semi_automatic"}})
 
+    def test_config_validation_accepts_public_web_channel_without_chat_id(self):
+        updated = self.runtime.update_config(
+            {
+                "telegram": {
+                    "channels": [
+                        self._public_web_channel(channel_username="https://t.me/s/lbeobhpreo"),
+                    ]
+                }
+            }
+        )
+        channel = updated.telegram.channels[0]
+        self.assertEqual(channel.source_type, "public_web")
+        self.assertEqual(channel.channel_username, "lbeobhpreo")
+        self.assertEqual(channel.chat_id, "")
+
     def test_readiness_warns_for_mtproto_channels(self):
         self.runtime.update_config(
             {
@@ -992,6 +1030,64 @@ class AppTests(unittest.TestCase):
         self.assertIn("vip-btc", checks["telegram_delete_events"]["detail"])
         self.assertEqual(gaps["telegram_delete_events"]["status"], "partial")
         self.assertIn("vip-btc", gaps["telegram_delete_events"]["detail"])
+
+    def test_public_web_html_parses_into_normalized_messages_and_detects_edits(self):
+        self.runtime.update_config({"telegram": {"channels": [self._public_web_channel()]}})
+        channel = self.runtime.config_manager.get().telegram.channels[0]
+        watcher = self.runtime.telegram
+        initial_html = """
+        <div class="tgme_widget_message" data-post="lbeobhpreo/101">
+          <div class="tgme_widget_message_text">LONG BTCUSDT<br>Entry now</div>
+          <div class="tgme_widget_message_date"><time datetime="2026-03-18T12:34:56+00:00"></time></div>
+        </div>
+        """
+        edited_html = """
+        <div class="tgme_widget_message" data-post="lbeobhpreo/101">
+          <div class="tgme_widget_message_text">LONG BTCUSDT<br>Entry updated</div>
+          <div class="tgme_widget_message_date"><time datetime="2026-03-18T12:34:56+00:00"></time></div>
+        </div>
+        """
+
+        parsed_posts = parse_public_channel_html("lbeobhpreo", initial_html)
+        self.assertEqual(len(parsed_posts), 1)
+        self.assertEqual(parsed_posts[0]["message_id"], 101)
+        self.assertEqual(parsed_posts[0]["text"], "LONG BTCUSDT\nEntry now")
+
+        normalized_new = watcher._normalize_public_web_post(channel, parsed_posts[0])
+        self.assertIsNotNone(normalized_new)
+        self.assertEqual(normalized_new.adapter, "public_web")
+        self.assertEqual(normalized_new.chat_id, "public:lbeobhpreo")
+        self.assertEqual(normalized_new.event_type, "new")
+        self.assertEqual(normalized_new.version, 1)
+        self.assertEqual(normalized_new.text, "LONG BTCUSDT\nEntry now")
+
+        normalized_edit = watcher._normalize_public_web_post(
+            channel,
+            parse_public_channel_html("lbeobhpreo", edited_html)[0],
+        )
+        self.assertIsNotNone(normalized_edit)
+        self.assertEqual(normalized_edit.event_type, "edit")
+        self.assertEqual(normalized_edit.version, 2)
+        self.assertEqual(normalized_edit.text, "LONG BTCUSDT\nEntry updated")
+        self.assertIsNotNone(normalized_edit.edit_date)
+
+    def test_telegram_watcher_reports_connected_health_for_public_web_without_bot_token(self):
+        self.runtime.update_config({"telegram": {"bot_token": "", "channels": [self._public_web_channel()]}})
+        health_events = []
+        callback = mock.Mock()
+
+        def fake_poll(channels, message_callback):
+            self.assertEqual(channels[0].source_type, "public_web")
+            self.runtime.telegram.stop_event.set()
+            return 0
+
+        self.runtime.telegram.health_callback = lambda status, detail: health_events.append((status, detail))
+        with mock.patch.object(self.runtime.telegram, "_poll_public_web_channels", side_effect=fake_poll):
+            self.runtime.telegram.run_forever(callback)
+
+        self.assertTrue(health_events)
+        self.assertEqual(health_events[-1][0], "connected")
+        self.assertIn("public_web channel", health_events[-1][1])
 
     def test_global_tp_sl_enabled_applies_protection_to_new_position(self):
         self.runtime.update_config(
@@ -1297,6 +1393,32 @@ class AppTests(unittest.TestCase):
         self.assertIn("close_all", paths["configured_okx_supported_actions"])
         self.assertNotIn("cancel_orders", paths["configured_okx_unsupported_actions"])
         self.assertNotIn("reverse_to_long", paths["configured_okx_unsupported_actions"])
+
+    def test_public_web_readiness_allows_automatic_ingestion_without_bot_token(self):
+        self.runtime.update_config(
+            {
+                "telegram": {
+                    "bot_token": "",
+                    "channels": [self._public_web_channel()],
+                    "operator_target": "https://t.me/c/3720752566/2080",
+                }
+            }
+        )
+        capabilities = self.runtime.capability_summary()
+        activation = self.runtime.activation_summary()
+        gaps = {item["id"]: item for item in self.runtime.remaining_gaps()}
+        checks = {item["name"]: item for item in self.runtime.readiness_checks()}
+        wiring = self.runtime.wiring_summary()
+
+        self.assertEqual(capabilities["telegram_ingestion"]["status"], "ready")
+        self.assertIn("not required", capabilities["telegram_ingestion"]["detail"])
+        self.assertEqual(activation["automatic_telegram"]["status"], "ready")
+        self.assertEqual(checks["telegram_watcher"]["status"], "pass")
+        self.assertIn("public_web", checks["telegram_watcher"]["detail"])
+        self.assertNotIn("telegram_bot_token", gaps)
+        self.assertEqual(gaps["telegram_operator_inbound_token"]["status"], "partial")
+        self.assertEqual(activation["operator_topic_inbound"]["status"], "blocked")
+        self.assertEqual(wiring["operator_command_ingress"], "configured_without_bot_token")
 
     def test_capability_summary_warns_when_okx_demo_endpoint_is_unreachable(self):
         self.runtime.update_config(

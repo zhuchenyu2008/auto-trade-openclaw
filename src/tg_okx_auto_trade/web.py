@@ -233,16 +233,17 @@ HTML = """<!doctype html>
           <form id="channelForm">
             <input name="id" placeholder="channel id (leave empty to derive)">
             <input name="name" placeholder="display name">
-            <div class="muted">`chat_id` accepts raw `-100...` or `https://t.me/c/.../...`; `channel_username` accepts `@name` or `https://t.me/name`.</div>
+            <div class="muted">`chat_id` accepts raw `-100...` or `https://t.me/c/.../...`; `channel_username` accepts `@name`, `https://t.me/name`, or `https://t.me/s/name` for `public_web`.</div>
             <div class="grid2">
               <select name="source_type">
                 <option value="bot_api">bot_api</option>
+                <option value="public_web">public_web</option>
                 <option value="mtproto">mtproto</option>
               </select>
               <input name="chat_id" placeholder="-100... or https://t.me/c/.../...">
             </div>
             <div class="grid2">
-              <input name="channel_username" placeholder="@username or https://t.me/username">
+              <input name="channel_username" placeholder="@username, https://t.me/username, or https://t.me/s/username">
               <select name="enabled">
                 <option value="true">enabled</option>
                 <option value="false">disabled</option>

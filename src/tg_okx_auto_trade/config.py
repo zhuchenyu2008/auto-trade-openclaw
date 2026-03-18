@@ -264,10 +264,14 @@ def validate_config(config: AppConfig) -> None:
         seen_channel_ids.add(channel.id)
         if not channel.name.strip():
             raise ValueError(f"Channel {channel.id} must include a display name")
-        if channel.source_type not in {"bot_api", "mtproto"}:
+        if channel.source_type not in {"bot_api", "mtproto", "public_web"}:
             raise ValueError(f"Channel {channel.id} has invalid source_type")
         if channel.live_trading_enabled:
             raise ValueError(f"Channel {channel.id} cannot enable live trading in this demo-only build")
+        if channel.source_type == "public_web" and not channel.channel_username:
+            raise ValueError(
+                f"Channel {channel.id} must define channel_username when source_type=public_web"
+            )
         if not channel.chat_id and not channel.channel_username:
             raise ValueError(f"Channel {channel.id} must define chat_id or channel_username")
         if channel.reconcile_interval_seconds <= 0:
@@ -379,7 +383,11 @@ def normalize_channel_username(value: str) -> str:
     raw = str(value or "").strip()
     if not raw:
         return ""
-    match = re.match(r"^(?:https?://)?t\.me/([A-Za-z0-9_]{3,})(?:/\d+)?/?(?:\?.*)?$", raw, flags=re.IGNORECASE)
+    match = re.match(
+        r"^(?:https?://)?t\.me/(?:s/)?([A-Za-z0-9_]{3,})(?:/\d+)?/?(?:\?.*)?$",
+        raw,
+        flags=re.IGNORECASE,
+    )
     if match:
         raw = match.group(1)
     return raw.lstrip("@")
