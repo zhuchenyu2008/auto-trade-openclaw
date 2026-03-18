@@ -463,6 +463,34 @@ class AppTests(unittest.TestCase):
         self.assertEqual(self.runtime.capability_summary()["okx_demo_execution"]["status"], "error")
         self.assertIn("trading_paused", {item["id"] for item in self.runtime.remaining_gaps()})
 
+    def test_okx_environment_mismatch_is_explained_in_operator_surfaces(self):
+        self.runtime.update_config(
+            {
+                "okx": {
+                    "enabled": True,
+                    "api_key": "live-key",
+                    "api_secret": "demo-secret",
+                    "passphrase": "demo-passphrase",
+                }
+            }
+        )
+        with mock.patch.object(
+            self.runtime.okx,
+            "_request",
+            return_value={"code": "50101", "msg": "APIKey does not match current environment."},
+        ):
+            self.runtime.process_message(self._message("LONG BTCUSDT"))
+        snapshot = self.runtime.snapshot()
+        hint = "live environment or another wrong environment key"
+        self.assertEqual(snapshot["messages"][0]["status"], "EXECUTION_FAILED")
+        self.assertIn("APIKey does not match current environment.", snapshot["health"]["okx_rest"]["detail"])
+        self.assertIn(hint, snapshot["health"]["okx_rest"]["detail"])
+        checks = {item["name"]: item for item in self.runtime.readiness_checks()}
+        self.assertIn(hint, checks["okx_demo"]["detail"])
+        capability = self.runtime.capability_summary()["okx_demo_execution"]
+        self.assertEqual(capability["status"], "error")
+        self.assertIn(hint, capability["detail"])
+
     def test_manual_close_positions_closes_simulated_position(self):
         self.runtime.process_message(self._message("LONG BTCUSDT"))
         result = self.runtime.close_positions("BTC-USDT-SWAP")

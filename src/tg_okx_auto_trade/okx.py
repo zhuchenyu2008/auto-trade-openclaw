@@ -158,7 +158,12 @@ class OKXGateway:
             },
         )
         if str(payload.get("code", "0")) != "0":
-            raise RuntimeError(payload.get("msg", "OKX demo leverage configuration failed"))
+            raise RuntimeError(
+                _with_okx_environment_hint(
+                    payload.get("msg", "OKX demo leverage configuration failed"),
+                    payload=payload,
+                )
+            )
         self._leverage_cache.add(cache_key)
 
     def _request(self, method: str, path: str, body: Any | None = None) -> dict[str, Any]:
@@ -314,10 +319,10 @@ class OKXGateway:
 
     def _validate_real_demo_order(self, payload: dict[str, Any]) -> dict[str, Any]:
         if str(payload.get("code", "0")) != "0":
-            raise RuntimeError(payload.get("msg", "OKX demo request failed"))
+            raise RuntimeError(_with_okx_environment_hint(payload.get("msg", "OKX demo request failed"), payload=payload))
         first = payload.get("data", [{}])[0]
         if str(first.get("sCode", "0")) != "0":
-            raise RuntimeError(first.get("sMsg", "OKX demo order rejected"))
+            raise RuntimeError(_with_okx_environment_hint(first.get("sMsg", "OKX demo order rejected"), payload=first))
         return first
 
     def _execute_real_demo_cancel_orders(self, intent: TradingIntent) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
@@ -359,10 +364,10 @@ class OKXGateway:
 
     def _validate_real_demo_cancel(self, payload: dict[str, Any]) -> None:
         if str(payload.get("code", "0")) != "0":
-            raise RuntimeError(payload.get("msg", "OKX demo cancel request failed"))
+            raise RuntimeError(_with_okx_environment_hint(payload.get("msg", "OKX demo cancel request failed"), payload=payload))
         for item in payload.get("data", []):
             if str(item.get("sCode", "0")) != "0":
-                raise RuntimeError(item.get("sMsg", "OKX demo cancel request rejected"))
+                raise RuntimeError(_with_okx_environment_hint(item.get("sMsg", "OKX demo cancel request rejected"), payload=item))
 
     def _apply_intent_to_position(self, intent: TradingIntent) -> tuple[dict[str, Any], float]:
         symbol = intent.symbol
@@ -632,4 +637,23 @@ def _okx_http_error_detail(*, method: str, path: str, exc: urllib.error.HTTPErro
     detail = f"OKX demo REST {method} {path} failed with {status_detail}"
     if response_body:
         detail = f"{detail}; response body: {response_body}"
-    return detail
+    return _with_okx_environment_hint(detail, response_body=response_body)
+
+
+def _with_okx_environment_hint(detail: str, *, response_body: str = "", payload: dict[str, Any] | None = None) -> str:
+    if not _is_okx_environment_mismatch(response_body=response_body, payload=payload):
+        return detail
+    hint = (
+        "Likely cause: this app is using the OKX demo path with `x-simulated-trading: 1`, "
+        "but the supplied API key belongs to the live environment or another wrong environment key."
+    )
+    if hint in detail:
+        return detail
+    return f"{detail}; {hint}"
+
+
+def _is_okx_environment_mismatch(*, response_body: str = "", payload: dict[str, Any] | None = None) -> bool:
+    response_text = str(response_body or "")
+    payload_text = json.dumps(payload, sort_keys=True) if payload else ""
+    combined = f"{response_text} {payload_text}"
+    return "50101" in combined or "APIKey does not match current environment." in combined
