@@ -211,6 +211,8 @@ If you intentionally want the configured OKX demo REST path instead of the safe 
 python3 -m tg_okx_auto_trade.main inject-message --config config.demo.local.json --real-okx-demo --text "LONG BTCUSDT now"
 ```
 
+If OKX replies with `50101` / `APIKey does not match current environment.`, the app now surfaces that as an environment-mismatch hint. In practice, this means the current key is not a demo-environment key for the `x-simulated-trading: 1` path. Use a true OKX demo key/passphrase pair before expecting credentialed demo orders to work.
+
 To simulate an edited Telegram message version:
 
 ```bash
