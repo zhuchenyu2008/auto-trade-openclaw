@@ -185,6 +185,7 @@ class OKXGateway:
         req.add_header("OK-ACCESS-TIMESTAMP", timestamp)
         req.add_header("OK-ACCESS-PASSPHRASE", passphrase)
         req.add_header("Content-Type", "application/json")
+        req.add_header("User-Agent", "tg-okx-auto-trade/1.0")
         if self.config.okx.use_demo:
             req.add_header("x-simulated-trading", "1")
         try:

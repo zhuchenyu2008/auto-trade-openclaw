@@ -639,6 +639,38 @@ class AppTests(unittest.TestCase):
         self.assertIn("response body: error code: 1010", message)
         self.assertIn("POST /api/v5/trade/order", message)
 
+    def test_real_demo_request_sets_user_agent_header(self):
+        self.runtime.update_config(
+            {
+                "okx": {
+                    "enabled": True,
+                    "api_key": "api-key",
+                    "api_secret": "api-secret",
+                    "passphrase": "passphrase",
+                }
+            }
+        )
+
+        def fake_urlopen(req, data=None, timeout=30):
+            self.assertEqual(req.headers.get("User-agent"), "tg-okx-auto-trade/1.0")
+            self.assertEqual(req.headers.get("X-simulated-trading"), "1")
+
+            class _Response:
+                def __enter__(self_inner):
+                    return self_inner
+
+                def __exit__(self_inner, exc_type, exc, tb):
+                    return False
+
+                def read(self_inner):
+                    return b'{"code":"0","msg":"","data":[]}'
+
+            return _Response()
+
+        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            payload = self.runtime.okx._request("POST", "/api/v5/account/set-leverage", {"instId": "BTC-USDT-SWAP"})
+        self.assertEqual(payload["code"], "0")
+
     def test_manual_inject_defaults_to_simulated_even_when_okx_demo_is_configured(self):
         self.runtime.update_config(
             {
