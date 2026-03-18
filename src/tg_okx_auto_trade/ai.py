@@ -32,6 +32,8 @@ class OpenClawAI:
         cmd = [
             "openclaw",
             "agent",
+            "--agent",
+            "main",
             "--local",
             "--message",
             prompt,
@@ -93,11 +95,18 @@ class OpenClawAI:
         trailing = _extract_single_level(upper, ("TRAILING", "TS"))
         if trailing is not None:
             trailing = {"trigger": trailing}
-        if "IGNORE" in upper or not upper:
+        is_long_bias = any(word in upper for word in ("LONG", "BUY", "BULL", "市价多", "做多", "开多", "看多"))
+        is_short_bias = any(word in upper for word in ("SHORT", "SELL", "BEAR", "市价空", "做空", "开空", "看空"))
+        has_trade_open_keyword = any(word in upper for word in ("LONG", "SHORT", "BUY", "SELL", "ADD", "REVERSE", "FLIP", "市价多", "市价空", "做多", "做空", "开多", "开空"))
+        has_protection_update = any(
+            word in upper for word in ("PROTECTION", "STOP LOSS", "TAKE PROFIT", " TRAILING", "UPDATE TP", "UPDATE SL", "止盈", "止损")
+        )
+        has_management_only_text = any(word in upper for word in ("止盈", "止损", "保本", "拿下", "触发", "浮盈中", "底仓"))
+        if "IGNORE" in upper or not upper or ((not symbol or not has_trade_open_keyword) and has_management_only_text):
             payload = {
                 "executable": False,
                 "action": "ignore",
-                "symbol": symbol,
+                "symbol": symbol or "",
                 "market_type": "swap",
                 "side": "flat",
                 "entry_type": "market",
@@ -114,11 +123,48 @@ class OpenClawAI:
                 "reason": "No actionable trade signal detected.",
             }
             return self._intent_from_payload(payload)
-        is_short_bias = any(word in upper for word in ("SHORT", "SELL", "BEAR"))
-        has_trade_open_keyword = any(word in upper for word in ("LONG", "SHORT", "BUY", "SELL", "ADD", "REVERSE", "FLIP"))
-        has_protection_update = any(
-            word in upper for word in ("PROTECTION", "STOP LOSS", "TAKE PROFIT", " TRAILING", "UPDATE TP", "UPDATE SL")
-        )
+        if not symbol and not has_trade_open_keyword:
+            payload = {
+                "executable": False,
+                "action": "ignore",
+                "symbol": "",
+                "market_type": "swap",
+                "side": "flat",
+                "entry_type": "market",
+                "size_mode": "fixed_usdt",
+                "size_value": 0.0,
+                "leverage": leverage,
+                "margin_mode": self.config.trading.margin_mode,
+                "risk_level": "low",
+                "tp": [],
+                "sl": None,
+                "trailing": trailing,
+                "require_manual_confirmation": False,
+                "confidence": 0.1,
+                "reason": "No actionable trade signal detected.",
+            }
+            return self._intent_from_payload(payload)
+        if not symbol:
+            payload = {
+                "executable": False,
+                "action": "ignore",
+                "symbol": "",
+                "market_type": "swap",
+                "side": "flat",
+                "entry_type": "market",
+                "size_mode": "fixed_usdt",
+                "size_value": 0.0,
+                "leverage": leverage,
+                "margin_mode": self.config.trading.margin_mode,
+                "risk_level": "low",
+                "tp": [],
+                "sl": None,
+                "trailing": trailing,
+                "require_manual_confirmation": True,
+                "confidence": 0.2,
+                "reason": "Trade direction was detected but the symbol could not be resolved confidently.",
+            }
+            return self._intent_from_payload(payload)
         action = "open_short" if is_short_bias else "open_long"
         side = "sell" if is_short_bias else "buy"
         reason = "Heuristic parser fallback inferred a trade intent from the message."
@@ -210,13 +256,17 @@ def _extract_json(raw: str) -> dict[str, Any]:
     return json.loads(raw[start : end + 1])
 
 
-def _extract_symbol(text: str) -> str:
-    match = re.search(r"\b([A-Z]{2,10})-USDT-(SWAP|FUTURES)\b", text)
+def _extract_symbol(text: str) -> str | None:
+    match = re.search(r"\b([A-Z]{2,15})-USDT-(SWAP|FUTURES)\b", text)
     if match:
         return f"{match.group(1)}-USDT-{match.group(2)}"
-    match = re.search(r"\b([A-Z]{2,10})USDT\b", text)
-    token = match.group(1) if match else "BTC"
-    return f"{token}-USDT-SWAP"
+    match = re.search(r"\b([A-Z]{2,15})USDT\b", text)
+    if match:
+        return f"{match.group(1)}-USDT-SWAP"
+    match = re.search(r"#([A-Z][A-Z0-9]{1,14})\b", text)
+    if match:
+        return f"{match.group(1)}-USDT-SWAP"
+    return None
 
 
 def _extract_leverage(text: str) -> int | None:

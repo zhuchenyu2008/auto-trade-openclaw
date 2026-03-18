@@ -11,6 +11,7 @@ import urllib.error
 from pathlib import Path
 from unittest import mock
 
+from tg_okx_auto_trade.ai import OpenClawAI
 from tg_okx_auto_trade.config import hash_pin
 from tg_okx_auto_trade.models import NormalizedMessage, TradingIntent
 from tg_okx_auto_trade.runtime import Runtime
@@ -1419,6 +1420,59 @@ class AppTests(unittest.TestCase):
         self.assertEqual(gaps["telegram_operator_inbound_token"]["status"], "partial")
         self.assertEqual(activation["operator_topic_inbound"]["status"], "blocked")
         self.assertEqual(wiring["operator_command_ingress"], "configured_without_bot_token")
+
+    def test_heuristic_parser_extracts_symbol_from_public_web_hashtag_signal(self):
+        ai = OpenClawAI(self.runtime.config_manager.get())
+        message = NormalizedMessage.from_public_web(
+            "lbeobhpreo",
+            "new",
+            {
+                "channel_username": "lbeobhpreo",
+                "message_id": 12001,
+                "date": "2026-03-18T00:00:00+00:00",
+                "text": "#FARTCOIN——市价多",
+                "caption": "",
+            },
+        )
+        intent = ai.parse(message, [], {})
+        self.assertTrue(intent.executable)
+        self.assertEqual(intent.action, "open_long")
+        self.assertEqual(intent.symbol, "FARTCOIN-USDT-SWAP")
+
+    def test_heuristic_parser_ignores_take_profit_broadcast_without_fresh_entry(self):
+        ai = OpenClawAI(self.runtime.config_manager.get())
+        message = NormalizedMessage.from_public_web(
+            "lbeobhpreo",
+            "new",
+            {
+                "channel_username": "lbeobhpreo",
+                "message_id": 12002,
+                "date": "2026-03-18T00:00:00+00:00",
+                "text": "#ANIME TP3止盈已觸發，簡簡單單跌幅15%",
+                "caption": "",
+            },
+        )
+        intent = ai.parse(message, [], {})
+        self.assertFalse(intent.executable)
+        self.assertEqual(intent.action, "ignore")
+
+    def test_heuristic_parser_ignores_ambiguous_chatter_without_symbol(self):
+        ai = OpenClawAI(self.runtime.config_manager.get())
+        message = NormalizedMessage.from_public_web(
+            "lbeobhpreo",
+            "new",
+            {
+                "channel_username": "lbeobhpreo",
+                "message_id": 12003,
+                "date": "2026-03-18T00:00:00+00:00",
+                "text": "看看能不能多空双吃！",
+                "caption": "",
+            },
+        )
+        intent = ai.parse(message, [], {})
+        self.assertFalse(intent.executable)
+        self.assertEqual(intent.action, "ignore")
+        self.assertEqual(intent.symbol, "")
 
     def test_capability_summary_warns_when_okx_demo_endpoint_is_unreachable(self):
         self.runtime.update_config(
