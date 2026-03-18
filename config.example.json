@@ -1,0 +1,57 @@
+{
+  "web": {
+    "host": "127.0.0.1",
+    "port": 6010,
+    "pin_hash": "",
+    "pin_plaintext_env": "TG_OKX_WEB_PIN"
+  },
+  "runtime": {
+    "data_dir": "data",
+    "sqlite_path": "data/app.db",
+    "log_retention_days": 14,
+    "config_reload_seconds": 5
+  },
+  "trading": {
+    "mode": "demo",
+    "execution_mode": "automatic",
+    "default_leverage": 20,
+    "margin_mode": "isolated",
+    "position_mode": "net",
+    "paper_trading_enabled": true,
+    "live_trading_enabled": false,
+    "global_tp_sl_enabled": false,
+    "global_take_profit_ratio": 50.0,
+    "global_stop_loss_ratio": 20.0,
+    "allow_live_switch": false,
+    "readonly_close_only": false,
+    "paused": false
+  },
+  "ai": {
+    "provider": "openclaw",
+    "model": "default",
+    "thinking": "high",
+    "timeout_seconds": 90,
+    "system_prompt": "Extract trading intent from Telegram signals. Return strict JSON only. Do not invent fields."
+  },
+  "telegram": {
+    "bot_token": "",
+    "bot_token_env": "TG_OKX_TELEGRAM_BOT_TOKEN",
+    "poll_interval_seconds": 5,
+    "channels": [],
+    "report_topic": "",
+    "operator_target": "",
+    "operator_thread_id": 0
+  },
+  "okx": {
+    "enabled": false,
+    "api_key": "",
+    "api_secret": "",
+    "api_key_env": "TG_OKX_OKX_API_KEY",
+    "api_secret_env": "TG_OKX_OKX_API_SECRET",
+    "passphrase": "",
+    "passphrase_env": "TG_OKX_OKX_PASSPHRASE",
+    "use_demo": true,
+    "rest_base": "https://www.okx.com",
+    "ws_private_url": "wss://ws.okx.com:8443/ws/v5/private"
+  }
+}

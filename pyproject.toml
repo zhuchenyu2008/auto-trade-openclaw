@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tg-okx-auto-trade"
+version = "0.1.0"
+description = "Telegram signal watcher + OpenClaw + OKX demo auto trade system"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+tg-okx-auto-trade = "tg_okx_auto_trade.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
