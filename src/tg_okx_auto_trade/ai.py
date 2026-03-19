@@ -265,7 +265,7 @@ class OpenClawAI:
         if missing:
             raise AIError(f"AI output missing fields: {sorted(missing)}")
         symbol = _normalize_intent_symbol(payload.get("symbol"))
-        action = str(payload["action"])
+        action = _normalize_action(payload["action"])
         side = _normalize_side(payload.get("side"), action)
         market_type = str(payload.get("market_type") or "swap")
         entry_type = str(payload.get("entry_type") or "market")
@@ -325,6 +325,23 @@ def _normalize_intent_symbol(value: Any) -> str:
     if re.fullmatch(r"[A-Z0-9]{2,15}", text):
         return f"{text}-USDT-SWAP"
     return text
+
+
+def _normalize_action(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    aliases = {
+        "close": "close_all",
+        "close_position": "close_all",
+        "close_positions": "close_all",
+        "cancel_entry": "cancel_orders",
+        "cancel_order": "cancel_orders",
+        "cancel": "cancel_orders",
+        "hold": "ignore",
+        "keep_holding": "ignore",
+        "wait": "ignore",
+        "watch": "ignore",
+    }
+    return aliases.get(text, text)
 
 
 def _normalize_side(side: Any, action: str) -> str:

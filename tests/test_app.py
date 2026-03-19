@@ -1657,6 +1657,38 @@ class AppTests(unittest.TestCase):
         self.assertEqual(intent.symbol, "")
         self.assertEqual(intent.side, "flat")
 
+    def test_openclaw_aliases_close_to_close_all(self):
+        updated = self.runtime.update_config({"ai": {"provider": "openclaw", "openclaw_agent_id": "tgokxai"}})
+        ai = OpenClawAI(updated)
+        wrapped = {
+            "runId": "126",
+            "status": "ok",
+            "result": {"payloads": [{"text": '{"executable": true, "action": "close", "symbol": "MOODENG", "market_type": "swap", "side": null, "entry_type": null, "size_mode": null, "size_value": null, "leverage": null, "margin_mode": null, "risk_level": "medium", "tp": [], "sl": null, "trailing": null, "require_manual_confirmation": false, "confidence": 0.94, "reason": "close it"}'}]}
+        }
+        completed = subprocess.CompletedProcess(args=["openclaw"], returncode=0, stdout=json.dumps(wrapped), stderr="")
+        with mock.patch("subprocess.run", return_value=completed):
+            message = NormalizedMessage.from_public_web("cryptoninjas_trading_ann", "new", {"channel_username": "cryptoninjas_trading_ann", "message_id": 8778, "date": "2026-03-18T00:00:00+00:00", "text": "CHR close at entry, wait for new entry", "caption": ""})
+            intent = ai.parse(message, [], {})
+        self.assertEqual(intent.action, "close_all")
+        self.assertEqual(intent.symbol, "MOODENG-USDT-SWAP")
+        self.assertEqual(intent.side, "flat")
+
+    def test_openclaw_aliases_cancel_entry_to_cancel_orders(self):
+        updated = self.runtime.update_config({"ai": {"provider": "openclaw", "openclaw_agent_id": "tgokxai"}})
+        ai = OpenClawAI(updated)
+        wrapped = {
+            "runId": "127",
+            "status": "ok",
+            "result": {"payloads": [{"text": '{"executable": true, "action": "cancel_entry", "symbol": "TOWNS", "market_type": "swap", "side": null, "entry_type": null, "size_mode": null, "size_value": null, "leverage": null, "margin_mode": null, "risk_level": "medium", "tp": [], "sl": null, "trailing": null, "require_manual_confirmation": false, "confidence": 0.94, "reason": "cancel limit"}'}]}
+        }
+        completed = subprocess.CompletedProcess(args=["openclaw"], returncode=0, stdout=json.dumps(wrapped), stderr="")
+        with mock.patch("subprocess.run", return_value=completed):
+            message = NormalizedMessage.from_public_web("cryptoninjas_trading_ann", "new", {"channel_username": "cryptoninjas_trading_ann", "message_id": 8777, "date": "2026-03-18T00:00:00+00:00", "text": "TOWNS cancel entry limit", "caption": ""})
+            intent = ai.parse(message, [], {})
+        self.assertEqual(intent.action, "cancel_orders")
+        self.assertEqual(intent.symbol, "TOWNS-USDT-SWAP")
+        self.assertEqual(intent.side, "flat")
+
     def test_capability_summary_warns_when_okx_demo_endpoint_is_unreachable(self):
         self.runtime.update_config(
             {
