@@ -1624,6 +1624,38 @@ class AppTests(unittest.TestCase):
         self.assertEqual(intent.symbol, "")
         self.assertEqual(intent.risk_level, "medium")
         self.assertEqual(intent.side, "flat")
+        self.assertFalse(intent.require_manual_confirmation)
+
+    def test_openclaw_ignore_clears_manual_confirmation_for_broadcast_text(self):
+        updated = self.runtime.update_config({"ai": {"provider": "openclaw", "openclaw_agent_id": "tgokxai"}})
+        ai = OpenClawAI(updated)
+        wrapped = {
+            "runId": "125",
+            "status": "ok",
+            "result": {
+                "payloads": [
+                    {"text": '{"executable": false, "action": "ignore", "symbol": null, "market_type": null, "side": null, "entry_type": null, "size_mode": null, "size_value": null, "leverage": null, "margin_mode": null, "risk_level": null, "tp": [], "sl": null, "trailing": null, "require_manual_confirmation": true, "confidence": 0.97, "reason": "Broadcast/update only"}'}
+                ]
+            }
+        }
+        completed = subprocess.CompletedProcess(args=["openclaw"], returncode=0, stdout=json.dumps(wrapped), stderr="")
+        with mock.patch("subprocess.run", return_value=completed):
+            message = NormalizedMessage.from_public_web(
+                "lbeobhpreo",
+                "new",
+                {
+                    "channel_username": "lbeobhpreo",
+                    "message_id": 12009,
+                    "date": "2026-03-18T00:00:00+00:00",
+                    "text": "会员群继续拿下！",
+                    "caption": "",
+                },
+            )
+            intent = ai.parse(message, [], {})
+        self.assertEqual(intent.action, "ignore")
+        self.assertFalse(intent.require_manual_confirmation)
+        self.assertEqual(intent.symbol, "")
+        self.assertEqual(intent.side, "flat")
 
     def test_capability_summary_warns_when_okx_demo_endpoint_is_unreachable(self):
         self.runtime.update_config(

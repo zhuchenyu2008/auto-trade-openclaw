@@ -278,6 +278,9 @@ class OpenClawAI:
         risk_level = _normalize_risk_level(payload.get("risk_level"))
         if action == "ignore" and (not symbol or _looks_ambiguous_symbol(symbol)):
             symbol = ""
+        require_manual_confirmation = bool(payload["require_manual_confirmation"])
+        if action == "ignore":
+            require_manual_confirmation = False
         return TradingIntent(
             executable=bool(payload["executable"]),
             action=action,
@@ -293,7 +296,7 @@ class OpenClawAI:
             tp=list(payload.get("tp", [])),
             sl=payload.get("sl"),
             trailing=payload.get("trailing"),
-            require_manual_confirmation=bool(payload["require_manual_confirmation"]),
+            require_manual_confirmation=require_manual_confirmation,
             confidence=float(payload["confidence"]),
             reason=str(payload["reason"]),
             raw=payload,
