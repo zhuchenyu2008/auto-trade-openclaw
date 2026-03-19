@@ -78,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     upsert_channel.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
     upsert_channel.add_argument("--id")
     upsert_channel.add_argument("--name", required=True)
-    upsert_channel.add_argument("--source-type", default="bot_api", choices=["bot_api", "mtproto"])
+    upsert_channel.add_argument("--source-type", default="bot_api", choices=["bot_api", "mtproto", "public_web"])
     upsert_channel.add_argument("--chat-id", default="")
     upsert_channel.add_argument("--channel-username", default="")
     upsert_channel.add_argument("--enabled", action="store_true")

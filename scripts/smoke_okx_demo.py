@@ -13,7 +13,7 @@ from smoke_utils import mirror_source_local_env
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.demo.local.json")
-    parser.add_argument("--symbol", default="BTCUSDT")
+    parser.add_argument("--symbol", default="ETHUSDT")
     parser.add_argument("--size", type=float, default=1.0)
     args = parser.parse_args()
 
@@ -51,7 +51,7 @@ def main() -> int:
             report = runtime.public_verification_report()
             if report["status"] == "error":
                 raise RuntimeError("verify report returned error status for demo smoke")
-            signal_text = f"LONG {args.symbol} SIZE {args.size}"
+            signal_text = f"OPEN LONG {args.symbol} UNIQUE_SMOKE_9901"
             runtime.inject_message(
                 text=signal_text,
                 chat_id="-1000000000000",
@@ -60,7 +60,8 @@ def main() -> int:
                 use_configured_okx_path=True,
             )
             snapshot = runtime.snapshot()
-            if snapshot["messages"] and snapshot["messages"][0]["status"] == "EXECUTION_FAILED":
+            current_message = _find_message(snapshot, 9901, 1)
+            if current_message and current_message["status"] == "EXECUTION_FAILED":
                 detail = snapshot["health"]["okx_rest"]["detail"]
                 if _is_network_blocked(detail):
                     print(
@@ -74,8 +75,10 @@ def main() -> int:
                         )
                     )
                     return 0
-            if snapshot["messages"][0]["status"] != "EXECUTED":
-                raise RuntimeError(f"Expected EXECUTED status, got {snapshot['messages'][0]['status']}")
+            if not current_message:
+                raise RuntimeError("Smoke-injected opening message 9901/1 not found in snapshot")
+            if current_message["status"] != "EXECUTED":
+                raise RuntimeError(f"Expected EXECUTED status, got {current_message['status']}")
             if snapshot["config"]["trading"]["paused"]:
                 raise RuntimeError("Runtime auto-paused during OKX demo smoke")
             if "reverse_to_long" not in report["wiring"]["configured_okx_supported_actions"]:
@@ -90,7 +93,8 @@ def main() -> int:
                 use_configured_okx_path=True,
             )
             reversed_snapshot = runtime.snapshot()
-            if reversed_snapshot["messages"][0]["status"] == "EXECUTION_FAILED":
+            reversed_message = _find_message(reversed_snapshot, 9902, 2)
+            if reversed_message and reversed_message["status"] == "EXECUTION_FAILED":
                 detail = reversed_snapshot["health"]["okx_rest"]["detail"]
                 if _is_network_blocked(detail):
                     print(
@@ -104,11 +108,14 @@ def main() -> int:
                         )
                     )
                     return 0
-            if reversed_snapshot["messages"][0]["status"] != "EXECUTED":
+            if not reversed_message:
+                raise RuntimeError("Smoke-injected reverse message 9902/2 not found in snapshot")
+            if reversed_message["status"] != "EXECUTED":
                 raise RuntimeError(
-                    f"Expected reverse EXECUTED status, got {reversed_snapshot['messages'][0]['status']}"
+                    f"Expected reverse EXECUTED status, got {reversed_message['status']}"
                 )
-            if reversed_snapshot["positions"][0]["payload"]["side"] != "short":
+            short_positions = [pos for pos in reversed_snapshot["positions"] if pos["payload"]["side"] == "short"]
+            if not short_positions:
                 raise RuntimeError("Expected reverse smoke to move the local expected position to short")
 
             symbol = reversed_snapshot["orders"][0]["symbol"]
@@ -136,6 +143,13 @@ def main() -> int:
             return 0
         finally:
             runtime.stop()
+
+def _find_message(snapshot: dict, message_id: int, version: int) -> dict | None:
+    for item in snapshot.get("messages", []):
+        if int(item.get("message_id", -1)) == int(message_id) and int(item.get("version", -1)) == int(version):
+            return item
+    return None
+
 
 def _is_network_blocked(detail: str) -> bool:
     lowered = detail.lower()

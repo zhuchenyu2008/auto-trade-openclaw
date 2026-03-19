@@ -520,7 +520,7 @@ def load_local_env(base_dir: Path | None = None) -> dict[str, str]:
         for key, value in env_values.items():
             current = os.environ.get(key)
             managed_value = _MANAGED_ENV_VALUES.get(key)
-            if key not in os.environ or current == managed_value:
+            if key not in os.environ or current == managed_value or current == "":
                 os.environ[key] = value
                 _MANAGED_ENV_VALUES[key] = value
             elif managed_value is not None and current != managed_value:
