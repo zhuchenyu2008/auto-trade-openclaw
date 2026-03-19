@@ -1,0 +1,64 @@
+{
+  "caption": "",
+  "channel_id": "cryptoninjas_trading_ann",
+  "channel_username": "cryptoninjas_trading_ann",
+  "date": "2026-03-18T01:31:00+00:00",
+  "edit_date": "2026-03-18T01:36:00+00:00",
+  "event_type": "edit",
+  "expected_execution_path": {
+    "configured_okx_demo": "real_demo_rest",
+    "default_manual_inject": "simulated_demo"
+  },
+  "expected_normalized_message": {
+    "adapter": "public_web",
+    "chat_id": "public:cryptoninjas_trading_ann",
+    "content_text": "ADD SHORT SOLUSDT $150",
+    "event_type": "edit",
+    "version": 2
+  },
+  "expected_parser": {
+    "absent": [],
+    "contains": {},
+    "exact": {
+      "action": "add_short",
+      "entry_type": "market",
+      "executable": true,
+      "leverage": 20,
+      "margin_mode": "isolated",
+      "market_type": "swap",
+      "require_manual_confirmation": false,
+      "side": "sell",
+      "size_mode": "fixed_usdt",
+      "size_value": 150.0,
+      "symbol": "SOL-USDT-SWAP"
+    },
+    "non_exact": [
+      "confidence",
+      "reason",
+      "raw"
+    ],
+    "provider_mode": "heuristic_or_openclaw",
+    "raw_exact": {
+      "parser_source": "heuristic",
+      "requested_provider": "heuristic"
+    }
+  },
+  "expected_risk": {
+    "approved": true,
+    "code": "approved"
+  },
+  "fixture_id": "pw-cryptoninjas_trading_ann-8102-v2-add-sol-short-edit",
+  "html_fragment_path": null,
+  "message_id": 8102,
+  "notes": "",
+  "scenario_id": "edit-chain-002",
+  "source_type": "public_web",
+  "tags": [
+    "add_short",
+    "public_web",
+    "en",
+    "edit"
+  ],
+  "text": "ADD SHORT SOLUSDT $150",
+  "version": 2
+}

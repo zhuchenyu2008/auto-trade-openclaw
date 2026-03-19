@@ -1,0 +1,63 @@
+{
+  "caption": "",
+  "channel_id": "fixture_public_alpha",
+  "channel_username": "fixture_public_alpha",
+  "date": "2026-03-18T00:53:00+00:00",
+  "edit_date": null,
+  "event_type": "new",
+  "expected_execution_path": {
+    "configured_okx_demo": "real_demo_rest",
+    "default_manual_inject": "simulated_demo"
+  },
+  "expected_normalized_message": {
+    "adapter": "public_web",
+    "chat_id": "public:fixture_public_alpha",
+    "content_text": "REVERSE \u5f00\u7a7a ADAUSDT",
+    "event_type": "new",
+    "version": 1
+  },
+  "expected_parser": {
+    "absent": [],
+    "contains": {},
+    "exact": {
+      "action": "reverse_to_short",
+      "entry_type": "market",
+      "executable": true,
+      "leverage": 20,
+      "margin_mode": "isolated",
+      "market_type": "swap",
+      "require_manual_confirmation": false,
+      "side": "sell",
+      "size_mode": "fixed_usdt",
+      "size_value": 100.0,
+      "symbol": "ADA-USDT-SWAP"
+    },
+    "non_exact": [
+      "confidence",
+      "reason",
+      "raw"
+    ],
+    "provider_mode": "heuristic_or_openclaw",
+    "raw_exact": {
+      "parser_source": "heuristic",
+      "requested_provider": "heuristic"
+    }
+  },
+  "expected_risk": {
+    "approved": true,
+    "code": "approved"
+  },
+  "fixture_id": "pw-fixture_public_alpha-5907-v1-reverse-short-mixed",
+  "html_fragment_path": null,
+  "message_id": 5907,
+  "notes": "",
+  "scenario_id": "action-reverse-short-006",
+  "source_type": "public_web",
+  "tags": [
+    "reverse_to_short",
+    "public_web",
+    "mixed"
+  ],
+  "text": "REVERSE \u5f00\u7a7a ADAUSDT",
+  "version": 1
+}

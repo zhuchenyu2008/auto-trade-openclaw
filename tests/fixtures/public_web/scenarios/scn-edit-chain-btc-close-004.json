@@ -1,0 +1,26 @@
+{
+  "coverage_category": "edit_chain",
+  "description": "An edited signal changes from open_long to close_all and executes both versions.",
+  "events": [
+    {
+      "fixture_id": "pw-fixture_public_alpha-8101-v1-open-btc-long",
+      "replay_count": 1
+    },
+    {
+      "fixture_id": "pw-fixture_public_alpha-8101-v2-close-btc-edit",
+      "replay_count": 1
+    }
+  ],
+  "expected_chain_outcome": {
+    "distinct_orders": 2,
+    "latest_action": "close_all",
+    "latest_message_status": "EXECUTED",
+    "message_versions_seen": [
+      1,
+      2
+    ],
+    "total_messages_persisted": 2
+  },
+  "fixture_id": "scn-edit-chain-btc-close-004",
+  "scenario_id": "edit-chain-btc-close-004"
+}

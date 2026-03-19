@@ -1,0 +1,72 @@
+{
+  "caption": "",
+  "channel_id": "fixture_public_alpha",
+  "channel_username": "fixture_public_alpha",
+  "date": "2026-03-18T01:05:00+00:00",
+  "edit_date": null,
+  "event_type": "new",
+  "expected_execution_path": {
+    "configured_okx_demo": "real_demo_rest",
+    "default_manual_inject": "simulated_demo"
+  },
+  "expected_normalized_message": {
+    "adapter": "public_web",
+    "chat_id": "public:fixture_public_alpha",
+    "content_text": "ADAUSDT UPDATE TP 1.15 TARGET 1.25",
+    "event_type": "new",
+    "version": 1
+  },
+  "expected_parser": {
+    "absent": [],
+    "contains": {},
+    "exact": {
+      "action": "update_protection",
+      "entry_type": "market",
+      "executable": true,
+      "leverage": 20,
+      "margin_mode": "isolated",
+      "market_type": "swap",
+      "require_manual_confirmation": false,
+      "side": "flat",
+      "size_mode": "fixed_usdt",
+      "size_value": 100.0,
+      "symbol": "ADA-USDT-SWAP",
+      "tp": [
+        {
+          "trigger": 1.15
+        },
+        {
+          "trigger": 1.25
+        }
+      ]
+    },
+    "non_exact": [
+      "confidence",
+      "reason",
+      "raw"
+    ],
+    "provider_mode": "heuristic_or_openclaw",
+    "raw_exact": {
+      "parser_source": "heuristic",
+      "requested_provider": "heuristic"
+    }
+  },
+  "expected_risk": {
+    "approved": true,
+    "code": "approved"
+  },
+  "fixture_id": "pw-fixture_public_alpha-6106-v1-update-protection-multi-target",
+  "html_fragment_path": null,
+  "message_id": 6106,
+  "notes": "",
+  "scenario_id": "action-update-protection-006",
+  "source_type": "public_web",
+  "tags": [
+    "update_protection",
+    "public_web",
+    "en",
+    "tp_text"
+  ],
+  "text": "ADAUSDT UPDATE TP 1.15 TARGET 1.25",
+  "version": 1
+}

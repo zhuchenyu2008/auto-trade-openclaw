@@ -1,0 +1,65 @@
+{
+  "caption": "",
+  "channel_id": "fixture_public_alpha",
+  "channel_username": "fixture_public_alpha",
+  "date": "2026-03-18T01:20:00+00:00",
+  "edit_date": null,
+  "event_type": "new",
+  "expected_execution_path": {
+    "configured_okx_demo": "real_demo_rest",
+    "default_manual_inject": "simulated_demo"
+  },
+  "expected_normalized_message": {
+    "adapter": "public_web",
+    "chat_id": "public:fixture_public_alpha",
+    "content_text": "SOLUSDT \u6b62\u635f\u7ed3\u675f",
+    "event_type": "new",
+    "version": 1
+  },
+  "expected_parser": {
+    "absent": [],
+    "contains": {},
+    "exact": {
+      "action": "ignore",
+      "entry_type": "market",
+      "executable": false,
+      "leverage": 20,
+      "margin_mode": "isolated",
+      "market_type": "swap",
+      "require_manual_confirmation": false,
+      "side": "flat",
+      "size_mode": "fixed_usdt",
+      "size_value": 0.0,
+      "symbol": "SOL-USDT-SWAP"
+    },
+    "non_exact": [
+      "confidence",
+      "reason",
+      "raw"
+    ],
+    "provider_mode": "heuristic_or_openclaw",
+    "raw_exact": {
+      "parser_source": "heuristic",
+      "requested_provider": "heuristic"
+    }
+  },
+  "expected_risk": {
+    "approved": false,
+    "code": "not_executable"
+  },
+  "fixture_id": "pw-fixture_public_alpha-7015-v1-ignore-sl-sol",
+  "html_fragment_path": null,
+  "message_id": 7015,
+  "notes": "Noise or management-only text should not create an executable order.",
+  "scenario_id": "noise-sl-003",
+  "source_type": "public_web",
+  "tags": [
+    "ignore",
+    "public_web",
+    "noise",
+    "sl_text",
+    "cn"
+  ],
+  "text": "SOLUSDT \u6b62\u635f\u7ed3\u675f",
+  "version": 1
+}

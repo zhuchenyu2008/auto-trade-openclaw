@@ -1,0 +1,67 @@
+{
+  "caption": "",
+  "channel_id": "feiyangkanbi",
+  "channel_username": "feiyangkanbi",
+  "date": "2026-03-18T01:04:00+00:00",
+  "edit_date": null,
+  "event_type": "new",
+  "expected_execution_path": {
+    "configured_okx_demo": "real_demo_rest",
+    "default_manual_inject": "simulated_demo"
+  },
+  "expected_normalized_message": {
+    "adapter": "public_web",
+    "chat_id": "public:feiyangkanbi",
+    "content_text": "XRPUSDT UPDATE SL 0.55",
+    "event_type": "new",
+    "version": 1
+  },
+  "expected_parser": {
+    "absent": [],
+    "contains": {},
+    "exact": {
+      "action": "update_protection",
+      "entry_type": "market",
+      "executable": true,
+      "leverage": 20,
+      "margin_mode": "isolated",
+      "market_type": "swap",
+      "require_manual_confirmation": false,
+      "side": "flat",
+      "size_mode": "fixed_usdt",
+      "size_value": 100.0,
+      "sl": {
+        "trigger": 0.55
+      },
+      "symbol": "XRP-USDT-SWAP"
+    },
+    "non_exact": [
+      "confidence",
+      "reason",
+      "raw"
+    ],
+    "provider_mode": "heuristic_or_openclaw",
+    "raw_exact": {
+      "parser_source": "heuristic",
+      "requested_provider": "heuristic"
+    }
+  },
+  "expected_risk": {
+    "approved": true,
+    "code": "approved"
+  },
+  "fixture_id": "pw-feiyangkanbi-6105-v1-update-protection-update-sl",
+  "html_fragment_path": null,
+  "message_id": 6105,
+  "notes": "",
+  "scenario_id": "action-update-protection-005",
+  "source_type": "public_web",
+  "tags": [
+    "update_protection",
+    "public_web",
+    "en",
+    "sl_text"
+  ],
+  "text": "XRPUSDT UPDATE SL 0.55",
+  "version": 1
+}

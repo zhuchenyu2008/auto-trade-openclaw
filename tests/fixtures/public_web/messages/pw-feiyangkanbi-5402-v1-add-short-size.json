@@ -1,0 +1,63 @@
+{
+  "caption": "",
+  "channel_id": "feiyangkanbi",
+  "channel_username": "feiyangkanbi",
+  "date": "2026-03-18T00:19:00+00:00",
+  "edit_date": null,
+  "event_type": "new",
+  "expected_execution_path": {
+    "configured_okx_demo": "real_demo_rest",
+    "default_manual_inject": "simulated_demo"
+  },
+  "expected_normalized_message": {
+    "adapter": "public_web",
+    "chat_id": "public:feiyangkanbi",
+    "content_text": "ADD SHORT AVAXUSDT $140",
+    "event_type": "new",
+    "version": 1
+  },
+  "expected_parser": {
+    "absent": [],
+    "contains": {},
+    "exact": {
+      "action": "add_short",
+      "entry_type": "market",
+      "executable": true,
+      "leverage": 20,
+      "margin_mode": "isolated",
+      "market_type": "swap",
+      "require_manual_confirmation": false,
+      "side": "sell",
+      "size_mode": "fixed_usdt",
+      "size_value": 140.0,
+      "symbol": "AVAX-USDT-SWAP"
+    },
+    "non_exact": [
+      "confidence",
+      "reason",
+      "raw"
+    ],
+    "provider_mode": "heuristic_or_openclaw",
+    "raw_exact": {
+      "parser_source": "heuristic",
+      "requested_provider": "heuristic"
+    }
+  },
+  "expected_risk": {
+    "approved": true,
+    "code": "approved"
+  },
+  "fixture_id": "pw-feiyangkanbi-5402-v1-add-short-size",
+  "html_fragment_path": null,
+  "message_id": 5402,
+  "notes": "",
+  "scenario_id": "action-add-short-002",
+  "source_type": "public_web",
+  "tags": [
+    "add_short",
+    "public_web",
+    "en"
+  ],
+  "text": "ADD SHORT AVAXUSDT $140",
+  "version": 1
+}

@@ -1,0 +1,771 @@
+{
+  "channels": {
+    "cryptoninjas_trading_ann": {
+      "html": 1,
+      "messages": 37,
+      "scenarios": 5
+    },
+    "feiyangkanbi": {
+      "html": 1,
+      "messages": 36,
+      "scenarios": 3
+    },
+    "fixture_public_alpha": {
+      "html": 1,
+      "messages": 35,
+      "scenarios": 7
+    }
+  },
+  "corpus_version": "m1b-public-web-deterministic",
+  "counts": {
+    "html": 3,
+    "messages": 108,
+    "milestone_bucket_total": 120,
+    "scenarios": 12,
+    "total_samples": 123
+  },
+  "coverage": {
+    "bucket_allocations": {
+      "action_coverage": {
+        "action_family_minimum": 6,
+        "actual": 66,
+        "families": {
+          "add_long": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-5301-v1-add-long-plain",
+              "pw-feiyangkanbi-5302-v1-add-long-size",
+              "pw-fixture_public_alpha-5303-v1-add-long-hashtag",
+              "pw-cryptoninjas_trading_ann-5304-v1-add-long-leverage",
+              "pw-feiyangkanbi-5305-v1-add-long-usdt",
+              "pw-fixture_public_alpha-5306-v1-add-long-target"
+            ]
+          },
+          "add_short": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-5401-v1-add-short-plain",
+              "pw-feiyangkanbi-5402-v1-add-short-size",
+              "pw-fixture_public_alpha-5403-v1-add-short-hashtag",
+              "pw-cryptoninjas_trading_ann-5404-v1-add-short-leverage",
+              "pw-feiyangkanbi-5405-v1-add-short-usdt",
+              "pw-fixture_public_alpha-5406-v1-add-short-target"
+            ]
+          },
+          "cancel_orders": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-6001-v1-cancel-plain",
+              "pw-feiyangkanbi-6002-v1-cancel-entry",
+              "pw-fixture_public_alpha-6003-v1-cancel-pending",
+              "pw-cryptoninjas_trading_ann-6004-v1-cancel-leverage",
+              "pw-feiyangkanbi-6005-v1-cancel-orders",
+              "pw-fixture_public_alpha-6006-v1-cancel-ladder"
+            ]
+          },
+          "close_all": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-5701-v1-close-all-plain",
+              "pw-feiyangkanbi-5702-v1-close-all-now",
+              "pw-fixture_public_alpha-5703-v1-close-all-hashtag",
+              "pw-cryptoninjas_trading_ann-5704-v1-close-all-leverage",
+              "pw-feiyangkanbi-5705-v1-close-all-capitalized",
+              "pw-fixture_public_alpha-5706-v1-close-all-target"
+            ]
+          },
+          "open_long": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-5101-v1-open-long-plain",
+              "pw-feiyangkanbi-5102-v1-open-long-size",
+              "pw-fixture_public_alpha-5103-v1-open-long-hashtag",
+              "pw-cryptoninjas_trading_ann-5104-v1-open-long-leverage",
+              "pw-feiyangkanbi-5105-v1-open-long-cn",
+              "pw-fixture_public_alpha-5901-v1-open-long-protection"
+            ]
+          },
+          "open_short": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-5201-v1-open-short-plain",
+              "pw-feiyangkanbi-5202-v1-open-short-size",
+              "pw-fixture_public_alpha-5203-v1-open-short-hashtag",
+              "pw-cryptoninjas_trading_ann-5204-v1-open-short-leverage",
+              "pw-feiyangkanbi-5205-v1-open-short-cn",
+              "pw-cryptoninjas_trading_ann-5901-v1-open-short-protection"
+            ]
+          },
+          "reduce_long": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-5501-v1-reduce-long-plain",
+              "pw-feiyangkanbi-5502-v1-reduce-long-partial",
+              "pw-fixture_public_alpha-5503-v1-reduce-long-size",
+              "pw-cryptoninjas_trading_ann-5504-v1-reduce-long-hashtag",
+              "pw-feiyangkanbi-5505-v1-reduce-long-leverage",
+              "pw-fixture_public_alpha-5506-v1-reduce-long-sized"
+            ]
+          },
+          "reduce_short": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-5601-v1-reduce-short-plain",
+              "pw-feiyangkanbi-5602-v1-reduce-short-partial",
+              "pw-fixture_public_alpha-5603-v1-reduce-short-size",
+              "pw-cryptoninjas_trading_ann-5604-v1-reduce-short-hashtag",
+              "pw-feiyangkanbi-5605-v1-reduce-short-leverage",
+              "pw-fixture_public_alpha-5606-v1-reduce-short-sized"
+            ]
+          },
+          "reverse_to_long": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-5801-v1-reverse-long-plain",
+              "pw-feiyangkanbi-5802-v1-reverse-long-flip",
+              "pw-fixture_public_alpha-5803-v1-reverse-long-hashtag",
+              "pw-cryptoninjas_trading_ann-5804-v1-reverse-long-leverage",
+              "pw-feiyangkanbi-5805-v1-reverse-long-size",
+              "pw-fixture_public_alpha-5806-v1-reverse-long-mixed"
+            ]
+          },
+          "reverse_to_short": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-5902-v1-reverse-short-plain",
+              "pw-feiyangkanbi-5903-v1-reverse-short-flip",
+              "pw-fixture_public_alpha-5904-v1-reverse-short-hashtag",
+              "pw-cryptoninjas_trading_ann-5905-v1-reverse-short-leverage",
+              "pw-feiyangkanbi-5906-v1-reverse-short-size",
+              "pw-fixture_public_alpha-5907-v1-reverse-short-mixed"
+            ]
+          },
+          "update_protection": {
+            "actual": 6,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-6101-v1-update-protection-sl",
+              "pw-feiyangkanbi-6102-v1-update-protection-tp",
+              "pw-fixture_public_alpha-6103-v1-update-protection-both",
+              "pw-cryptoninjas_trading_ann-6104-v1-update-protection-trailing",
+              "pw-feiyangkanbi-6105-v1-update-protection-update-sl",
+              "pw-fixture_public_alpha-6106-v1-update-protection-multi-target"
+            ]
+          }
+        },
+        "fixture_ids": [
+          "pw-cryptoninjas_trading_ann-5101-v1-open-long-plain",
+          "pw-feiyangkanbi-5102-v1-open-long-size",
+          "pw-fixture_public_alpha-5103-v1-open-long-hashtag",
+          "pw-cryptoninjas_trading_ann-5104-v1-open-long-leverage",
+          "pw-feiyangkanbi-5105-v1-open-long-cn",
+          "pw-fixture_public_alpha-5901-v1-open-long-protection",
+          "pw-cryptoninjas_trading_ann-5201-v1-open-short-plain",
+          "pw-feiyangkanbi-5202-v1-open-short-size",
+          "pw-fixture_public_alpha-5203-v1-open-short-hashtag",
+          "pw-cryptoninjas_trading_ann-5204-v1-open-short-leverage",
+          "pw-feiyangkanbi-5205-v1-open-short-cn",
+          "pw-cryptoninjas_trading_ann-5901-v1-open-short-protection",
+          "pw-cryptoninjas_trading_ann-5301-v1-add-long-plain",
+          "pw-feiyangkanbi-5302-v1-add-long-size",
+          "pw-fixture_public_alpha-5303-v1-add-long-hashtag",
+          "pw-cryptoninjas_trading_ann-5304-v1-add-long-leverage",
+          "pw-feiyangkanbi-5305-v1-add-long-usdt",
+          "pw-fixture_public_alpha-5306-v1-add-long-target",
+          "pw-cryptoninjas_trading_ann-5401-v1-add-short-plain",
+          "pw-feiyangkanbi-5402-v1-add-short-size",
+          "pw-fixture_public_alpha-5403-v1-add-short-hashtag",
+          "pw-cryptoninjas_trading_ann-5404-v1-add-short-leverage",
+          "pw-feiyangkanbi-5405-v1-add-short-usdt",
+          "pw-fixture_public_alpha-5406-v1-add-short-target",
+          "pw-cryptoninjas_trading_ann-5501-v1-reduce-long-plain",
+          "pw-feiyangkanbi-5502-v1-reduce-long-partial",
+          "pw-fixture_public_alpha-5503-v1-reduce-long-size",
+          "pw-cryptoninjas_trading_ann-5504-v1-reduce-long-hashtag",
+          "pw-feiyangkanbi-5505-v1-reduce-long-leverage",
+          "pw-fixture_public_alpha-5506-v1-reduce-long-sized",
+          "pw-cryptoninjas_trading_ann-5601-v1-reduce-short-plain",
+          "pw-feiyangkanbi-5602-v1-reduce-short-partial",
+          "pw-fixture_public_alpha-5603-v1-reduce-short-size",
+          "pw-cryptoninjas_trading_ann-5604-v1-reduce-short-hashtag",
+          "pw-feiyangkanbi-5605-v1-reduce-short-leverage",
+          "pw-fixture_public_alpha-5606-v1-reduce-short-sized",
+          "pw-cryptoninjas_trading_ann-5701-v1-close-all-plain",
+          "pw-feiyangkanbi-5702-v1-close-all-now",
+          "pw-fixture_public_alpha-5703-v1-close-all-hashtag",
+          "pw-cryptoninjas_trading_ann-5704-v1-close-all-leverage",
+          "pw-feiyangkanbi-5705-v1-close-all-capitalized",
+          "pw-fixture_public_alpha-5706-v1-close-all-target",
+          "pw-cryptoninjas_trading_ann-5801-v1-reverse-long-plain",
+          "pw-feiyangkanbi-5802-v1-reverse-long-flip",
+          "pw-fixture_public_alpha-5803-v1-reverse-long-hashtag",
+          "pw-cryptoninjas_trading_ann-5804-v1-reverse-long-leverage",
+          "pw-feiyangkanbi-5805-v1-reverse-long-size",
+          "pw-fixture_public_alpha-5806-v1-reverse-long-mixed",
+          "pw-cryptoninjas_trading_ann-5902-v1-reverse-short-plain",
+          "pw-feiyangkanbi-5903-v1-reverse-short-flip",
+          "pw-fixture_public_alpha-5904-v1-reverse-short-hashtag",
+          "pw-cryptoninjas_trading_ann-5905-v1-reverse-short-leverage",
+          "pw-feiyangkanbi-5906-v1-reverse-short-size",
+          "pw-fixture_public_alpha-5907-v1-reverse-short-mixed",
+          "pw-cryptoninjas_trading_ann-6001-v1-cancel-plain",
+          "pw-feiyangkanbi-6002-v1-cancel-entry",
+          "pw-fixture_public_alpha-6003-v1-cancel-pending",
+          "pw-cryptoninjas_trading_ann-6004-v1-cancel-leverage",
+          "pw-feiyangkanbi-6005-v1-cancel-orders",
+          "pw-fixture_public_alpha-6006-v1-cancel-ladder",
+          "pw-cryptoninjas_trading_ann-6101-v1-update-protection-sl",
+          "pw-feiyangkanbi-6102-v1-update-protection-tp",
+          "pw-fixture_public_alpha-6103-v1-update-protection-both",
+          "pw-cryptoninjas_trading_ann-6104-v1-update-protection-trailing",
+          "pw-feiyangkanbi-6105-v1-update-protection-update-sl",
+          "pw-fixture_public_alpha-6106-v1-update-protection-multi-target"
+        ]
+      },
+      "edit_version_coverage": {
+        "actual": 18,
+        "chains": [
+          {
+            "fixture_ids": [
+              "pw-fixture_public_alpha-8101-v1-open-btc-long",
+              "pw-fixture_public_alpha-8101-v2-close-btc-edit"
+            ],
+            "scenario_id": "edit-chain-001"
+          },
+          {
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-8102-v1-open-sol-short",
+              "pw-cryptoninjas_trading_ann-8102-v2-add-sol-short-edit"
+            ],
+            "scenario_id": "edit-chain-002"
+          },
+          {
+            "fixture_ids": [
+              "pw-feiyangkanbi-8103-v1-open-doge-long",
+              "pw-feiyangkanbi-8103-v2-reduce-doge-long-edit"
+            ],
+            "scenario_id": "edit-chain-003"
+          },
+          {
+            "fixture_ids": [
+              "pw-fixture_public_alpha-8104-v1-open-eth-short",
+              "pw-fixture_public_alpha-8104-v2-reverse-eth-long-edit"
+            ],
+            "scenario_id": "edit-chain-004"
+          },
+          {
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-8105-v1-cancel-towns-entry",
+              "pw-cryptoninjas_trading_ann-8105-v2-open-towns-long-edit"
+            ],
+            "scenario_id": "edit-chain-005"
+          },
+          {
+            "fixture_ids": [
+              "pw-feiyangkanbi-8106-v1-ignore-sui-wait",
+              "pw-feiyangkanbi-8106-v2-open-sui-short-edit"
+            ],
+            "scenario_id": "edit-chain-006"
+          },
+          {
+            "fixture_ids": [
+              "pw-fixture_public_alpha-8107-v1-update-btc-sl",
+              "pw-fixture_public_alpha-8107-v2-close-btc-edit"
+            ],
+            "scenario_id": "edit-chain-007"
+          },
+          {
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-8108-v1-open-xrp-long",
+              "pw-cryptoninjas_trading_ann-8108-v2-reverse-xrp-short-edit"
+            ],
+            "scenario_id": "edit-chain-008"
+          },
+          {
+            "fixture_ids": [
+              "pw-feiyangkanbi-8109-v1-add-ada-long",
+              "pw-feiyangkanbi-8109-v2-update-ada-protection-edit"
+            ],
+            "scenario_id": "edit-chain-009"
+          }
+        ],
+        "fixture_ids": [
+          "pw-fixture_public_alpha-8101-v1-open-btc-long",
+          "pw-fixture_public_alpha-8101-v2-close-btc-edit",
+          "pw-cryptoninjas_trading_ann-8102-v1-open-sol-short",
+          "pw-cryptoninjas_trading_ann-8102-v2-add-sol-short-edit",
+          "pw-feiyangkanbi-8103-v1-open-doge-long",
+          "pw-feiyangkanbi-8103-v2-reduce-doge-long-edit",
+          "pw-fixture_public_alpha-8104-v1-open-eth-short",
+          "pw-fixture_public_alpha-8104-v2-reverse-eth-long-edit",
+          "pw-cryptoninjas_trading_ann-8105-v1-cancel-towns-entry",
+          "pw-cryptoninjas_trading_ann-8105-v2-open-towns-long-edit",
+          "pw-feiyangkanbi-8106-v1-ignore-sui-wait",
+          "pw-feiyangkanbi-8106-v2-open-sui-short-edit",
+          "pw-fixture_public_alpha-8107-v1-update-btc-sl",
+          "pw-fixture_public_alpha-8107-v2-close-btc-edit",
+          "pw-cryptoninjas_trading_ann-8108-v1-open-xrp-long",
+          "pw-cryptoninjas_trading_ann-8108-v2-reverse-xrp-short-edit",
+          "pw-feiyangkanbi-8109-v1-add-ada-long",
+          "pw-feiyangkanbi-8109-v2-update-ada-protection-edit"
+        ]
+      },
+      "noise_ignore_coverage": {
+        "actual": 24,
+        "categories": {
+          "breakeven": {
+            "count": 3,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-7016-v1-ignore-breakeven-btc",
+              "pw-feiyangkanbi-7017-v1-ignore-breakeven-eth",
+              "pw-fixture_public_alpha-7018-v1-ignore-breakeven-sol"
+            ]
+          },
+          "hold": {
+            "count": 3,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-7007-v1-ignore-hold-runners",
+              "pw-feiyangkanbi-7008-v1-ignore-hold-dont-chase",
+              "pw-fixture_public_alpha-7009-v1-ignore-hold-manage"
+            ]
+          },
+          "promo": {
+            "count": 3,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-7001-v1-ignore-promo-vip",
+              "pw-feiyangkanbi-7002-v1-ignore-promo-referral",
+              "pw-fixture_public_alpha-7003-v1-ignore-promo-subscribe"
+            ]
+          },
+          "sl_text": {
+            "count": 3,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-7013-v1-ignore-sl-btc",
+              "pw-feiyangkanbi-7014-v1-ignore-sl-eth",
+              "pw-fixture_public_alpha-7015-v1-ignore-sl-sol"
+            ]
+          },
+          "tp_text": {
+            "count": 3,
+            "fixture_ids": [
+              "pw-cryptoninjas_trading_ann-7010-v1-ignore-tp-btc",
+              "pw-feiyangkanbi-7011-v1-ignore-tp-eth",
+              "pw-fixture_public_alpha-7012-v1-ignore-tp-sol"
+            ]
+          }
+        },
+        "fixture_ids": [
+          "pw-cryptoninjas_trading_ann-7001-v1-ignore-promo-vip",
+          "pw-feiyangkanbi-7002-v1-ignore-promo-referral",
+          "pw-fixture_public_alpha-7003-v1-ignore-promo-subscribe",
+          "pw-cryptoninjas_trading_ann-7004-v1-ignore-wait-no-chase",
+          "pw-feiyangkanbi-7005-v1-ignore-wait-standby",
+          "pw-fixture_public_alpha-7006-v1-ignore-wait-flat",
+          "pw-cryptoninjas_trading_ann-7007-v1-ignore-hold-runners",
+          "pw-feiyangkanbi-7008-v1-ignore-hold-dont-chase",
+          "pw-fixture_public_alpha-7009-v1-ignore-hold-manage",
+          "pw-cryptoninjas_trading_ann-7010-v1-ignore-tp-btc",
+          "pw-feiyangkanbi-7011-v1-ignore-tp-eth",
+          "pw-fixture_public_alpha-7012-v1-ignore-tp-sol",
+          "pw-cryptoninjas_trading_ann-7013-v1-ignore-sl-btc",
+          "pw-feiyangkanbi-7014-v1-ignore-sl-eth",
+          "pw-fixture_public_alpha-7015-v1-ignore-sl-sol",
+          "pw-cryptoninjas_trading_ann-7016-v1-ignore-breakeven-btc",
+          "pw-feiyangkanbi-7017-v1-ignore-breakeven-eth",
+          "pw-fixture_public_alpha-7018-v1-ignore-breakeven-sol",
+          "pw-cryptoninjas_trading_ann-7019-v1-ignore-explicit-ada",
+          "pw-feiyangkanbi-7020-v1-ignore-explicit-op",
+          "pw-fixture_public_alpha-7021-v1-ignore-explicit-link",
+          "pw-cryptoninjas_trading_ann-7022-v1-ignore-ambiguous-standby",
+          "pw-feiyangkanbi-7023-v1-ignore-ambiguous-quiet",
+          "pw-fixture_public_alpha-7024-v1-ignore-ambiguous-plan"
+        ]
+      },
+      "replay_reconcile_dedup_coverage": {
+        "actual": 12,
+        "categories": {
+          "dedup_same_version": {
+            "count": 3,
+            "scenario_ids": [
+              "scn-dedup-open-long-001",
+              "scn-dedup-open-short-002",
+              "scn-dedup-cancel-003"
+            ]
+          },
+          "edit_chain": {
+            "count": 3,
+            "scenario_ids": [
+              "scn-edit-chain-btc-close-004",
+              "scn-edit-chain-sol-add-005",
+              "scn-edit-chain-ignore-open-006"
+            ]
+          },
+          "mixed_channel_same_message_id": {
+            "count": 2,
+            "scenario_ids": [
+              "scn-mixed-channel-shared-id-007",
+              "scn-mixed-channel-edit-id-008"
+            ]
+          },
+          "reconcile_buffer_replay": {
+            "count": 2,
+            "scenario_ids": [
+              "scn-reconcile-buffer-open-009",
+              "scn-reconcile-buffer-multi-010"
+            ]
+          },
+          "restart_persisted_state": {
+            "count": 2,
+            "scenario_ids": [
+              "scn-restart-dedup-open-011",
+              "scn-restart-edit-close-012"
+            ]
+          }
+        },
+        "scenario_ids": [
+          "scn-dedup-open-long-001",
+          "scn-dedup-open-short-002",
+          "scn-dedup-cancel-003",
+          "scn-edit-chain-btc-close-004",
+          "scn-edit-chain-sol-add-005",
+          "scn-edit-chain-ignore-open-006",
+          "scn-mixed-channel-shared-id-007",
+          "scn-mixed-channel-edit-id-008",
+          "scn-reconcile-buffer-open-009",
+          "scn-reconcile-buffer-multi-010",
+          "scn-restart-dedup-open-011",
+          "scn-restart-edit-close-012"
+        ]
+      }
+    },
+    "summary": {
+      "action_coverage": {
+        "actual": 66,
+        "delta": 0,
+        "meets_target": true,
+        "target": 66
+      },
+      "edit_version_coverage": {
+        "actual": 18,
+        "delta": 0,
+        "meets_target": true,
+        "target": 18
+      },
+      "noise_ignore_coverage": {
+        "actual": 24,
+        "delta": 0,
+        "meets_target": true,
+        "target": 24
+      },
+      "replay_reconcile_dedup_coverage": {
+        "actual": 12,
+        "delta": 0,
+        "meets_target": true,
+        "target": 12
+      }
+    }
+  },
+  "fixtures": {
+    "html": [
+      "html-cryptoninjas-trading-ann-basic-001",
+      "html-feiyangkanbi-nested-002",
+      "html-fixture-public-alpha-mixed-003"
+    ],
+    "messages": [
+      "pw-cryptoninjas_trading_ann-5101-v1-open-long-plain",
+      "pw-feiyangkanbi-5102-v1-open-long-size",
+      "pw-fixture_public_alpha-5103-v1-open-long-hashtag",
+      "pw-cryptoninjas_trading_ann-5104-v1-open-long-leverage",
+      "pw-feiyangkanbi-5105-v1-open-long-cn",
+      "pw-fixture_public_alpha-5901-v1-open-long-protection",
+      "pw-cryptoninjas_trading_ann-5201-v1-open-short-plain",
+      "pw-feiyangkanbi-5202-v1-open-short-size",
+      "pw-fixture_public_alpha-5203-v1-open-short-hashtag",
+      "pw-cryptoninjas_trading_ann-5204-v1-open-short-leverage",
+      "pw-feiyangkanbi-5205-v1-open-short-cn",
+      "pw-cryptoninjas_trading_ann-5901-v1-open-short-protection",
+      "pw-cryptoninjas_trading_ann-5301-v1-add-long-plain",
+      "pw-feiyangkanbi-5302-v1-add-long-size",
+      "pw-fixture_public_alpha-5303-v1-add-long-hashtag",
+      "pw-cryptoninjas_trading_ann-5304-v1-add-long-leverage",
+      "pw-feiyangkanbi-5305-v1-add-long-usdt",
+      "pw-fixture_public_alpha-5306-v1-add-long-target",
+      "pw-cryptoninjas_trading_ann-5401-v1-add-short-plain",
+      "pw-feiyangkanbi-5402-v1-add-short-size",
+      "pw-fixture_public_alpha-5403-v1-add-short-hashtag",
+      "pw-cryptoninjas_trading_ann-5404-v1-add-short-leverage",
+      "pw-feiyangkanbi-5405-v1-add-short-usdt",
+      "pw-fixture_public_alpha-5406-v1-add-short-target",
+      "pw-cryptoninjas_trading_ann-5501-v1-reduce-long-plain",
+      "pw-feiyangkanbi-5502-v1-reduce-long-partial",
+      "pw-fixture_public_alpha-5503-v1-reduce-long-size",
+      "pw-cryptoninjas_trading_ann-5504-v1-reduce-long-hashtag",
+      "pw-feiyangkanbi-5505-v1-reduce-long-leverage",
+      "pw-fixture_public_alpha-5506-v1-reduce-long-sized",
+      "pw-cryptoninjas_trading_ann-5601-v1-reduce-short-plain",
+      "pw-feiyangkanbi-5602-v1-reduce-short-partial",
+      "pw-fixture_public_alpha-5603-v1-reduce-short-size",
+      "pw-cryptoninjas_trading_ann-5604-v1-reduce-short-hashtag",
+      "pw-feiyangkanbi-5605-v1-reduce-short-leverage",
+      "pw-fixture_public_alpha-5606-v1-reduce-short-sized",
+      "pw-cryptoninjas_trading_ann-5701-v1-close-all-plain",
+      "pw-feiyangkanbi-5702-v1-close-all-now",
+      "pw-fixture_public_alpha-5703-v1-close-all-hashtag",
+      "pw-cryptoninjas_trading_ann-5704-v1-close-all-leverage",
+      "pw-feiyangkanbi-5705-v1-close-all-capitalized",
+      "pw-fixture_public_alpha-5706-v1-close-all-target",
+      "pw-cryptoninjas_trading_ann-5801-v1-reverse-long-plain",
+      "pw-feiyangkanbi-5802-v1-reverse-long-flip",
+      "pw-fixture_public_alpha-5803-v1-reverse-long-hashtag",
+      "pw-cryptoninjas_trading_ann-5804-v1-reverse-long-leverage",
+      "pw-feiyangkanbi-5805-v1-reverse-long-size",
+      "pw-fixture_public_alpha-5806-v1-reverse-long-mixed",
+      "pw-cryptoninjas_trading_ann-5902-v1-reverse-short-plain",
+      "pw-feiyangkanbi-5903-v1-reverse-short-flip",
+      "pw-fixture_public_alpha-5904-v1-reverse-short-hashtag",
+      "pw-cryptoninjas_trading_ann-5905-v1-reverse-short-leverage",
+      "pw-feiyangkanbi-5906-v1-reverse-short-size",
+      "pw-fixture_public_alpha-5907-v1-reverse-short-mixed",
+      "pw-cryptoninjas_trading_ann-6001-v1-cancel-plain",
+      "pw-feiyangkanbi-6002-v1-cancel-entry",
+      "pw-fixture_public_alpha-6003-v1-cancel-pending",
+      "pw-cryptoninjas_trading_ann-6004-v1-cancel-leverage",
+      "pw-feiyangkanbi-6005-v1-cancel-orders",
+      "pw-fixture_public_alpha-6006-v1-cancel-ladder",
+      "pw-cryptoninjas_trading_ann-6101-v1-update-protection-sl",
+      "pw-feiyangkanbi-6102-v1-update-protection-tp",
+      "pw-fixture_public_alpha-6103-v1-update-protection-both",
+      "pw-cryptoninjas_trading_ann-6104-v1-update-protection-trailing",
+      "pw-feiyangkanbi-6105-v1-update-protection-update-sl",
+      "pw-fixture_public_alpha-6106-v1-update-protection-multi-target",
+      "pw-cryptoninjas_trading_ann-7001-v1-ignore-promo-vip",
+      "pw-feiyangkanbi-7002-v1-ignore-promo-referral",
+      "pw-fixture_public_alpha-7003-v1-ignore-promo-subscribe",
+      "pw-cryptoninjas_trading_ann-7004-v1-ignore-wait-no-chase",
+      "pw-feiyangkanbi-7005-v1-ignore-wait-standby",
+      "pw-fixture_public_alpha-7006-v1-ignore-wait-flat",
+      "pw-cryptoninjas_trading_ann-7007-v1-ignore-hold-runners",
+      "pw-feiyangkanbi-7008-v1-ignore-hold-dont-chase",
+      "pw-fixture_public_alpha-7009-v1-ignore-hold-manage",
+      "pw-cryptoninjas_trading_ann-7010-v1-ignore-tp-btc",
+      "pw-feiyangkanbi-7011-v1-ignore-tp-eth",
+      "pw-fixture_public_alpha-7012-v1-ignore-tp-sol",
+      "pw-cryptoninjas_trading_ann-7013-v1-ignore-sl-btc",
+      "pw-feiyangkanbi-7014-v1-ignore-sl-eth",
+      "pw-fixture_public_alpha-7015-v1-ignore-sl-sol",
+      "pw-cryptoninjas_trading_ann-7016-v1-ignore-breakeven-btc",
+      "pw-feiyangkanbi-7017-v1-ignore-breakeven-eth",
+      "pw-fixture_public_alpha-7018-v1-ignore-breakeven-sol",
+      "pw-cryptoninjas_trading_ann-7019-v1-ignore-explicit-ada",
+      "pw-feiyangkanbi-7020-v1-ignore-explicit-op",
+      "pw-fixture_public_alpha-7021-v1-ignore-explicit-link",
+      "pw-cryptoninjas_trading_ann-7022-v1-ignore-ambiguous-standby",
+      "pw-feiyangkanbi-7023-v1-ignore-ambiguous-quiet",
+      "pw-fixture_public_alpha-7024-v1-ignore-ambiguous-plan",
+      "pw-fixture_public_alpha-8101-v1-open-btc-long",
+      "pw-fixture_public_alpha-8101-v2-close-btc-edit",
+      "pw-cryptoninjas_trading_ann-8102-v1-open-sol-short",
+      "pw-cryptoninjas_trading_ann-8102-v2-add-sol-short-edit",
+      "pw-feiyangkanbi-8103-v1-open-doge-long",
+      "pw-feiyangkanbi-8103-v2-reduce-doge-long-edit",
+      "pw-fixture_public_alpha-8104-v1-open-eth-short",
+      "pw-fixture_public_alpha-8104-v2-reverse-eth-long-edit",
+      "pw-cryptoninjas_trading_ann-8105-v1-cancel-towns-entry",
+      "pw-cryptoninjas_trading_ann-8105-v2-open-towns-long-edit",
+      "pw-feiyangkanbi-8106-v1-ignore-sui-wait",
+      "pw-feiyangkanbi-8106-v2-open-sui-short-edit",
+      "pw-fixture_public_alpha-8107-v1-update-btc-sl",
+      "pw-fixture_public_alpha-8107-v2-close-btc-edit",
+      "pw-cryptoninjas_trading_ann-8108-v1-open-xrp-long",
+      "pw-cryptoninjas_trading_ann-8108-v2-reverse-xrp-short-edit",
+      "pw-feiyangkanbi-8109-v1-add-ada-long",
+      "pw-feiyangkanbi-8109-v2-update-ada-protection-edit"
+    ],
+    "scenarios": [
+      "scn-dedup-open-long-001",
+      "scn-dedup-open-short-002",
+      "scn-dedup-cancel-003",
+      "scn-edit-chain-btc-close-004",
+      "scn-edit-chain-sol-add-005",
+      "scn-edit-chain-ignore-open-006",
+      "scn-mixed-channel-shared-id-007",
+      "scn-mixed-channel-edit-id-008",
+      "scn-reconcile-buffer-open-009",
+      "scn-reconcile-buffer-multi-010",
+      "scn-restart-dedup-open-011",
+      "scn-restart-edit-close-012"
+    ]
+  },
+  "generated_at": "2026-03-19T00:00:00+00:00",
+  "generator": "scripts/generate_public_web_fixtures.py",
+  "message_action_distribution": {
+    "add_long": {
+      "count": 7,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-5301-v1-add-long-plain",
+        "pw-feiyangkanbi-5302-v1-add-long-size",
+        "pw-fixture_public_alpha-5303-v1-add-long-hashtag",
+        "pw-cryptoninjas_trading_ann-5304-v1-add-long-leverage",
+        "pw-feiyangkanbi-5305-v1-add-long-usdt",
+        "pw-fixture_public_alpha-5306-v1-add-long-target",
+        "pw-feiyangkanbi-8109-v1-add-ada-long"
+      ]
+    },
+    "add_short": {
+      "count": 7,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-5401-v1-add-short-plain",
+        "pw-feiyangkanbi-5402-v1-add-short-size",
+        "pw-fixture_public_alpha-5403-v1-add-short-hashtag",
+        "pw-cryptoninjas_trading_ann-5404-v1-add-short-leverage",
+        "pw-feiyangkanbi-5405-v1-add-short-usdt",
+        "pw-fixture_public_alpha-5406-v1-add-short-target",
+        "pw-cryptoninjas_trading_ann-8102-v2-add-sol-short-edit"
+      ]
+    },
+    "cancel_orders": {
+      "count": 7,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-6001-v1-cancel-plain",
+        "pw-feiyangkanbi-6002-v1-cancel-entry",
+        "pw-fixture_public_alpha-6003-v1-cancel-pending",
+        "pw-cryptoninjas_trading_ann-6004-v1-cancel-leverage",
+        "pw-feiyangkanbi-6005-v1-cancel-orders",
+        "pw-fixture_public_alpha-6006-v1-cancel-ladder",
+        "pw-cryptoninjas_trading_ann-8105-v1-cancel-towns-entry"
+      ]
+    },
+    "close_all": {
+      "count": 8,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-5701-v1-close-all-plain",
+        "pw-feiyangkanbi-5702-v1-close-all-now",
+        "pw-fixture_public_alpha-5703-v1-close-all-hashtag",
+        "pw-cryptoninjas_trading_ann-5704-v1-close-all-leverage",
+        "pw-feiyangkanbi-5705-v1-close-all-capitalized",
+        "pw-fixture_public_alpha-5706-v1-close-all-target",
+        "pw-fixture_public_alpha-8101-v2-close-btc-edit",
+        "pw-fixture_public_alpha-8107-v2-close-btc-edit"
+      ]
+    },
+    "open_long": {
+      "count": 10,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-5101-v1-open-long-plain",
+        "pw-feiyangkanbi-5102-v1-open-long-size",
+        "pw-fixture_public_alpha-5103-v1-open-long-hashtag",
+        "pw-cryptoninjas_trading_ann-5104-v1-open-long-leverage",
+        "pw-feiyangkanbi-5105-v1-open-long-cn",
+        "pw-fixture_public_alpha-5901-v1-open-long-protection",
+        "pw-fixture_public_alpha-8101-v1-open-btc-long",
+        "pw-feiyangkanbi-8103-v1-open-doge-long",
+        "pw-cryptoninjas_trading_ann-8105-v2-open-towns-long-edit",
+        "pw-cryptoninjas_trading_ann-8108-v1-open-xrp-long"
+      ]
+    },
+    "open_short": {
+      "count": 9,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-5201-v1-open-short-plain",
+        "pw-feiyangkanbi-5202-v1-open-short-size",
+        "pw-fixture_public_alpha-5203-v1-open-short-hashtag",
+        "pw-cryptoninjas_trading_ann-5204-v1-open-short-leverage",
+        "pw-feiyangkanbi-5205-v1-open-short-cn",
+        "pw-cryptoninjas_trading_ann-5901-v1-open-short-protection",
+        "pw-cryptoninjas_trading_ann-8102-v1-open-sol-short",
+        "pw-fixture_public_alpha-8104-v1-open-eth-short",
+        "pw-feiyangkanbi-8106-v2-open-sui-short-edit"
+      ]
+    },
+    "reduce_long": {
+      "count": 7,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-5501-v1-reduce-long-plain",
+        "pw-feiyangkanbi-5502-v1-reduce-long-partial",
+        "pw-fixture_public_alpha-5503-v1-reduce-long-size",
+        "pw-cryptoninjas_trading_ann-5504-v1-reduce-long-hashtag",
+        "pw-feiyangkanbi-5505-v1-reduce-long-leverage",
+        "pw-fixture_public_alpha-5506-v1-reduce-long-sized",
+        "pw-feiyangkanbi-8103-v2-reduce-doge-long-edit"
+      ]
+    },
+    "reduce_short": {
+      "count": 6,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-5601-v1-reduce-short-plain",
+        "pw-feiyangkanbi-5602-v1-reduce-short-partial",
+        "pw-fixture_public_alpha-5603-v1-reduce-short-size",
+        "pw-cryptoninjas_trading_ann-5604-v1-reduce-short-hashtag",
+        "pw-feiyangkanbi-5605-v1-reduce-short-leverage",
+        "pw-fixture_public_alpha-5606-v1-reduce-short-sized"
+      ]
+    },
+    "reverse_to_long": {
+      "count": 7,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-5801-v1-reverse-long-plain",
+        "pw-feiyangkanbi-5802-v1-reverse-long-flip",
+        "pw-fixture_public_alpha-5803-v1-reverse-long-hashtag",
+        "pw-cryptoninjas_trading_ann-5804-v1-reverse-long-leverage",
+        "pw-feiyangkanbi-5805-v1-reverse-long-size",
+        "pw-fixture_public_alpha-5806-v1-reverse-long-mixed",
+        "pw-fixture_public_alpha-8104-v2-reverse-eth-long-edit"
+      ]
+    },
+    "reverse_to_short": {
+      "count": 7,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-5902-v1-reverse-short-plain",
+        "pw-feiyangkanbi-5903-v1-reverse-short-flip",
+        "pw-fixture_public_alpha-5904-v1-reverse-short-hashtag",
+        "pw-cryptoninjas_trading_ann-5905-v1-reverse-short-leverage",
+        "pw-feiyangkanbi-5906-v1-reverse-short-size",
+        "pw-fixture_public_alpha-5907-v1-reverse-short-mixed",
+        "pw-cryptoninjas_trading_ann-8108-v2-reverse-xrp-short-edit"
+      ]
+    },
+    "update_protection": {
+      "count": 8,
+      "fixture_ids": [
+        "pw-cryptoninjas_trading_ann-6101-v1-update-protection-sl",
+        "pw-feiyangkanbi-6102-v1-update-protection-tp",
+        "pw-fixture_public_alpha-6103-v1-update-protection-both",
+        "pw-cryptoninjas_trading_ann-6104-v1-update-protection-trailing",
+        "pw-feiyangkanbi-6105-v1-update-protection-update-sl",
+        "pw-fixture_public_alpha-6106-v1-update-protection-multi-target",
+        "pw-fixture_public_alpha-8107-v1-update-btc-sl",
+        "pw-feiyangkanbi-8109-v2-update-ada-protection-edit"
+      ]
+    }
+  },
+  "message_tag_counts": {
+    "add_long": 7,
+    "add_short": 7,
+    "breakeven": 3,
+    "cancel_orders": 7,
+    "close_all": 8,
+    "cn": 12,
+    "dedup": 1,
+    "edit": 18,
+    "en": 94,
+    "hashtag": 12,
+    "hold": 3,
+    "ignore": 25,
+    "mixed": 2,
+    "noise": 25,
+    "open_long": 10,
+    "open_short": 9,
+    "promo": 3,
+    "public_web": 108,
+    "reconcile": 0,
+    "reduce_long": 7,
+    "reduce_short": 6,
+    "replay": 1,
+    "reverse_to_long": 7,
+    "reverse_to_short": 7,
+    "sl_text": 10,
+    "tp_text": 12,
+    "update_protection": 8
+  },
+  "root": "/tmp/tg-okx-auto-trade-codex-run-20260317-2204/tests/fixtures/public_web",
+  "source_type": "public_web"
+}

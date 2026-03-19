@@ -1,0 +1,65 @@
+{
+  "caption": "",
+  "channel_id": "feiyangkanbi",
+  "channel_username": "feiyangkanbi",
+  "date": "2026-03-18T01:22:00+00:00",
+  "edit_date": null,
+  "event_type": "new",
+  "expected_execution_path": {
+    "configured_okx_demo": "real_demo_rest",
+    "default_manual_inject": "simulated_demo"
+  },
+  "expected_normalized_message": {
+    "adapter": "public_web",
+    "chat_id": "public:feiyangkanbi",
+    "content_text": "ETHUSDT \u6d6e\u76c8\u4e2d \u5e95\u4ed3\u7ee7\u7eed\u62ff",
+    "event_type": "new",
+    "version": 1
+  },
+  "expected_parser": {
+    "absent": [],
+    "contains": {},
+    "exact": {
+      "action": "ignore",
+      "entry_type": "market",
+      "executable": false,
+      "leverage": 20,
+      "margin_mode": "isolated",
+      "market_type": "swap",
+      "require_manual_confirmation": false,
+      "side": "flat",
+      "size_mode": "fixed_usdt",
+      "size_value": 0.0,
+      "symbol": "ETH-USDT-SWAP"
+    },
+    "non_exact": [
+      "confidence",
+      "reason",
+      "raw"
+    ],
+    "provider_mode": "heuristic_or_openclaw",
+    "raw_exact": {
+      "parser_source": "heuristic",
+      "requested_provider": "heuristic"
+    }
+  },
+  "expected_risk": {
+    "approved": false,
+    "code": "not_executable"
+  },
+  "fixture_id": "pw-feiyangkanbi-7017-v1-ignore-breakeven-eth",
+  "html_fragment_path": null,
+  "message_id": 7017,
+  "notes": "Noise or management-only text should not create an executable order.",
+  "scenario_id": "noise-breakeven-002",
+  "source_type": "public_web",
+  "tags": [
+    "ignore",
+    "public_web",
+    "noise",
+    "breakeven",
+    "cn"
+  ],
+  "text": "ETHUSDT \u6d6e\u76c8\u4e2d \u5e95\u4ed3\u7ee7\u7eed\u62ff",
+  "version": 1
+}

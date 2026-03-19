@@ -1,0 +1,26 @@
+{
+  "coverage_category": "edit_chain",
+  "description": "An ignored wait note becomes an executable short on edit.",
+  "events": [
+    {
+      "fixture_id": "pw-feiyangkanbi-8106-v1-ignore-sui-wait",
+      "replay_count": 1
+    },
+    {
+      "fixture_id": "pw-feiyangkanbi-8106-v2-open-sui-short-edit",
+      "replay_count": 1
+    }
+  ],
+  "expected_chain_outcome": {
+    "distinct_orders": 1,
+    "latest_action": "open_short",
+    "latest_message_status": "EXECUTED",
+    "message_versions_seen": [
+      1,
+      2
+    ],
+    "total_messages_persisted": 2
+  },
+  "fixture_id": "scn-edit-chain-ignore-open-006",
+  "scenario_id": "edit-chain-ignore-open-006"
+}

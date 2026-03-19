@@ -1,0 +1,30 @@
+{
+  "coverage_category": "restart_persisted_state",
+  "description": "Restart restores the open position and the next edit closes it with a new execution attempt.",
+  "events": [
+    {
+      "fixture_id": "pw-fixture_public_alpha-8101-v1-open-btc-long",
+      "replay_count": 1
+    },
+    {
+      "fixture_id": "pw-fixture_public_alpha-8101-v2-close-btc-edit",
+      "replay_count": 1
+    }
+  ],
+  "expected_chain_outcome": {
+    "distinct_orders": 2,
+    "latest_action": "close_all",
+    "latest_message_status": "EXECUTED",
+    "message_versions_seen": [
+      1,
+      2
+    ],
+    "total_messages_persisted": 2
+  },
+  "expected_open_positions": [],
+  "fixture_id": "scn-restart-edit-close-012",
+  "restart_after_event_indexes": [
+    0
+  ],
+  "scenario_id": "restart-edit-close-012"
+}

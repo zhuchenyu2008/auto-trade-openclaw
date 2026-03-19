@@ -1,0 +1,38 @@
+{
+  "coverage_category": "reconcile_buffer_replay",
+  "description": "Reconcile can replay multiple buffered versions without producing duplicate orders.",
+  "events": [
+    {
+      "fixture_id": "pw-cryptoninjas_trading_ann-5201-v1-open-short-plain",
+      "replay_count": 1
+    },
+    {
+      "fixture_id": "pw-feiyangkanbi-6002-v1-cancel-entry",
+      "replay_count": 1
+    }
+  ],
+  "expected_chain_outcome": {
+    "distinct_orders": 2,
+    "latest_action": "cancel_orders",
+    "latest_message_status": "EXECUTED",
+    "message_versions_seen": [
+      1
+    ],
+    "total_messages_persisted": 2
+  },
+  "expected_last_reconcile": {
+    "replayed_messages": 2,
+    "status": "ok"
+  },
+  "fixture_id": "scn-reconcile-buffer-multi-010",
+  "reconcile_steps": [
+    {
+      "after_event_index": 1,
+      "buffered_fixture_ids": [
+        "pw-cryptoninjas_trading_ann-5201-v1-open-short-plain",
+        "pw-feiyangkanbi-6002-v1-cancel-entry"
+      ]
+    }
+  ],
+  "scenario_id": "reconcile-buffer-multi-010"
+}

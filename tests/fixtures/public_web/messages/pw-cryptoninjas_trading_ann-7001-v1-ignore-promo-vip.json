@@ -1,0 +1,65 @@
+{
+  "caption": "",
+  "channel_id": "cryptoninjas_trading_ann",
+  "channel_username": "cryptoninjas_trading_ann",
+  "date": "2026-03-18T01:06:00+00:00",
+  "edit_date": null,
+  "event_type": "new",
+  "expected_execution_path": {
+    "configured_okx_demo": "real_demo_rest",
+    "default_manual_inject": "simulated_demo"
+  },
+  "expected_normalized_message": {
+    "adapter": "public_web",
+    "chat_id": "public:cryptoninjas_trading_ann",
+    "content_text": "IGNORE VIP promo only, no entry in this post",
+    "event_type": "new",
+    "version": 1
+  },
+  "expected_parser": {
+    "absent": [],
+    "contains": {},
+    "exact": {
+      "action": "ignore",
+      "entry_type": "market",
+      "executable": false,
+      "leverage": 20,
+      "margin_mode": "isolated",
+      "market_type": "swap",
+      "require_manual_confirmation": false,
+      "side": "flat",
+      "size_mode": "fixed_usdt",
+      "size_value": 0.0,
+      "symbol": ""
+    },
+    "non_exact": [
+      "confidence",
+      "reason",
+      "raw"
+    ],
+    "provider_mode": "heuristic_or_openclaw",
+    "raw_exact": {
+      "parser_source": "heuristic",
+      "requested_provider": "heuristic"
+    }
+  },
+  "expected_risk": {
+    "approved": false,
+    "code": "invalid_symbol"
+  },
+  "fixture_id": "pw-cryptoninjas_trading_ann-7001-v1-ignore-promo-vip",
+  "html_fragment_path": null,
+  "message_id": 7001,
+  "notes": "Noise or management-only text should not create an executable order.",
+  "scenario_id": "noise-promo-001",
+  "source_type": "public_web",
+  "tags": [
+    "ignore",
+    "public_web",
+    "noise",
+    "promo",
+    "en"
+  ],
+  "text": "IGNORE VIP promo only, no entry in this post",
+  "version": 1
+}

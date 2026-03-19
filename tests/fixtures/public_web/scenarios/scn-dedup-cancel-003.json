@@ -1,0 +1,21 @@
+{
+  "coverage_category": "dedup_same_version",
+  "description": "Cancel-order replays do not duplicate local order records.",
+  "events": [
+    {
+      "fixture_id": "pw-feiyangkanbi-6002-v1-cancel-entry",
+      "replay_count": 2
+    }
+  ],
+  "expected_chain_outcome": {
+    "distinct_orders": 1,
+    "latest_action": "cancel_orders",
+    "latest_message_status": "EXECUTED",
+    "message_versions_seen": [
+      1
+    ],
+    "total_messages_persisted": 1
+  },
+  "fixture_id": "scn-dedup-cancel-003",
+  "scenario_id": "dedup-cancel-003"
+}

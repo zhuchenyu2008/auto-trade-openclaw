@@ -1,0 +1,20 @@
+{
+  "channel_username": "cryptoninjas_trading_ann",
+  "expected_posts": [
+    {
+      "caption": "",
+      "channel_username": "cryptoninjas_trading_ann",
+      "date": "2026-03-18T12:00:00+00:00",
+      "message_id": 901,
+      "text": "LONG BTCUSDT\nTP 98000"
+    },
+    {
+      "caption": "",
+      "channel_username": "cryptoninjas_trading_ann",
+      "date": "2026-03-18T12:05:00+00:00",
+      "message_id": 902,
+      "text": "ADD LONG BTCUSDT\n$250"
+    }
+  ],
+  "fixture_id": "html-cryptoninjas-trading-ann-basic-001"
+}

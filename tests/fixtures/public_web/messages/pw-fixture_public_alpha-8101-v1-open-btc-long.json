@@ -1,0 +1,64 @@
+{
+  "caption": "",
+  "channel_id": "fixture_public_alpha",
+  "channel_username": "fixture_public_alpha",
+  "date": "2026-03-18T01:30:00+00:00",
+  "edit_date": null,
+  "event_type": "new",
+  "expected_execution_path": {
+    "configured_okx_demo": "real_demo_rest",
+    "default_manual_inject": "simulated_demo"
+  },
+  "expected_normalized_message": {
+    "adapter": "public_web",
+    "chat_id": "public:fixture_public_alpha",
+    "content_text": "LONG BTCUSDT",
+    "event_type": "new",
+    "version": 1
+  },
+  "expected_parser": {
+    "absent": [],
+    "contains": {},
+    "exact": {
+      "action": "open_long",
+      "entry_type": "market",
+      "executable": true,
+      "leverage": 20,
+      "margin_mode": "isolated",
+      "market_type": "swap",
+      "require_manual_confirmation": false,
+      "side": "buy",
+      "size_mode": "fixed_usdt",
+      "size_value": 100.0,
+      "symbol": "BTC-USDT-SWAP"
+    },
+    "non_exact": [
+      "confidence",
+      "reason",
+      "raw"
+    ],
+    "provider_mode": "heuristic_or_openclaw",
+    "raw_exact": {
+      "parser_source": "heuristic",
+      "requested_provider": "heuristic"
+    }
+  },
+  "expected_risk": {
+    "approved": true,
+    "code": "approved"
+  },
+  "fixture_id": "pw-fixture_public_alpha-8101-v1-open-btc-long",
+  "html_fragment_path": null,
+  "message_id": 8101,
+  "notes": "",
+  "scenario_id": "edit-chain-001",
+  "source_type": "public_web",
+  "tags": [
+    "open_long",
+    "public_web",
+    "en",
+    "edit"
+  ],
+  "text": "LONG BTCUSDT",
+  "version": 1
+}

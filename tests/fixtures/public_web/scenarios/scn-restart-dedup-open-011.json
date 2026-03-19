@@ -1,0 +1,35 @@
+{
+  "coverage_category": "restart_persisted_state",
+  "description": "Restart preserves processed message state so a same-version replay remains deduplicated.",
+  "events": [
+    {
+      "fixture_id": "pw-fixture_public_alpha-5901-v1-open-long-protection",
+      "replay_count": 1
+    },
+    {
+      "fixture_id": "pw-fixture_public_alpha-5901-v1-open-long-protection",
+      "replay_count": 1
+    }
+  ],
+  "expected_chain_outcome": {
+    "distinct_orders": 1,
+    "latest_action": "open_long",
+    "latest_message_status": "EXECUTED",
+    "message_versions_seen": [
+      1
+    ],
+    "total_messages_persisted": 1
+  },
+  "expected_open_positions": [
+    {
+      "qty": 100.0,
+      "side": "long",
+      "symbol": "ADA-USDT-SWAP"
+    }
+  ],
+  "fixture_id": "scn-restart-dedup-open-011",
+  "restart_after_event_indexes": [
+    0
+  ],
+  "scenario_id": "restart-dedup-open-011"
+}

@@ -1,0 +1,64 @@
+{
+  "caption": "",
+  "channel_id": "feiyangkanbi",
+  "channel_username": "feiyangkanbi",
+  "date": "2026-03-18T00:55:00+00:00",
+  "edit_date": null,
+  "event_type": "new",
+  "expected_execution_path": {
+    "configured_okx_demo": "real_demo_rest",
+    "default_manual_inject": "simulated_demo"
+  },
+  "expected_normalized_message": {
+    "adapter": "public_web",
+    "chat_id": "public:feiyangkanbi",
+    "content_text": "#ETH cancel entry limit",
+    "event_type": "new",
+    "version": 1
+  },
+  "expected_parser": {
+    "absent": [],
+    "contains": {},
+    "exact": {
+      "action": "cancel_orders",
+      "entry_type": "market",
+      "executable": true,
+      "leverage": 20,
+      "margin_mode": "isolated",
+      "market_type": "swap",
+      "require_manual_confirmation": false,
+      "side": "flat",
+      "size_mode": "fixed_usdt",
+      "size_value": 100.0,
+      "symbol": "ETH-USDT-SWAP"
+    },
+    "non_exact": [
+      "confidence",
+      "reason",
+      "raw"
+    ],
+    "provider_mode": "heuristic_or_openclaw",
+    "raw_exact": {
+      "parser_source": "heuristic",
+      "requested_provider": "heuristic"
+    }
+  },
+  "expected_risk": {
+    "approved": true,
+    "code": "approved"
+  },
+  "fixture_id": "pw-feiyangkanbi-6002-v1-cancel-entry",
+  "html_fragment_path": null,
+  "message_id": 6002,
+  "notes": "",
+  "scenario_id": "action-cancel-002",
+  "source_type": "public_web",
+  "tags": [
+    "cancel_orders",
+    "public_web",
+    "en",
+    "hashtag"
+  ],
+  "text": "#ETH cancel entry limit",
+  "version": 1
+}

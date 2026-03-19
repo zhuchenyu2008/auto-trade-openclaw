@@ -1,0 +1,21 @@
+{
+  "coverage_category": "dedup_same_version",
+  "description": "A same-version short replay stays deduplicated across three submissions.",
+  "events": [
+    {
+      "fixture_id": "pw-cryptoninjas_trading_ann-5201-v1-open-short-plain",
+      "replay_count": 3
+    }
+  ],
+  "expected_chain_outcome": {
+    "distinct_orders": 1,
+    "latest_action": "open_short",
+    "latest_message_status": "EXECUTED",
+    "message_versions_seen": [
+      1
+    ],
+    "total_messages_persisted": 1
+  },
+  "fixture_id": "scn-dedup-open-short-002",
+  "scenario_id": "dedup-open-short-002"
+}

@@ -45,15 +45,13 @@ Date: 2026-03-19
 | `TC-RECOV-002` | local `.env` hot reload | none | Run `python3 -m unittest tests.test_app.AppTests.test_config_manager_reload_detects_local_env_bot_token_change tests.test_app.AppTests.test_config_manager_reload_detects_local_env_okx_credential_change` | runtime picks up local `.env` changes for bot token and OKX demo credentials | unittest pass output | existing |
 | `TC-RECOV-003` | simulated position restore and runtime artifacts | none | Run `python3 -m unittest tests.test_app.AppTests.test_simulated_positions_are_restored_after_restart tests.test_app.AppTests.test_runtime_writes_public_runtime_artifacts` | positions restore after restart; direct-use and public-state artifacts are written | unittest pass output | existing |
 
-## 3. Planned Fixture-Driven Cases
-
-These are intentionally concrete, but the harness does not exist yet.
+## 3. Fixture-Driven Cases
 
 | ID | Area | Prerequisites | Steps | Expected result | Evidence | Planned hook |
 | --- | --- | --- | --- | --- | --- | --- |
-| `TC-FXT-001` | 120-sample parser corpus | fixture corpus implemented per `docs/telegram-okx-openclaw-fixture-spec.md` | Run `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/messages` | all corpus items produce the expected parser contract or expected ignore/reject result | fixture suite JSON report with per-fixture ids | not implemented yet |
-| `TC-FXT-002` | replay, reconcile, and dedup chains | scenario-chain fixtures implemented | Run `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/scenarios` | duplicate same-version events are suppressed, edit chains increment version, replay chains reconcile correctly | fixture suite JSON report plus scenario chain ids | not implemented yet |
-| `TC-FXT-003` | public_web HTML corpus | HTML fixtures implemented | Run `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/html` | HTML pages/fragments normalize to the expected public-web post records | fixture suite JSON report plus stored normalized output | not implemented yet |
+| `TC-FXT-001` | 120-sample parser corpus | none | Run `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/messages` | all corpus items produce the expected parser contract or expected ignore/reject result | fixture suite JSON report with per-fixture ids | existing |
+| `TC-FXT-002` | replay, reconcile, and dedup chains | none | Run `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/scenarios` | duplicate same-version events are suppressed, edit chains increment version, replay chains reconcile correctly | fixture suite JSON report plus scenario chain ids | existing |
+| `TC-FXT-003` | public_web HTML corpus | none | Run `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/html` | HTML pages/fragments normalize to the expected public-web post records | fixture suite JSON report plus stored normalized output | existing |
 
 ## 4. Known Baseline Drifts To Capture When Executing Cases
 

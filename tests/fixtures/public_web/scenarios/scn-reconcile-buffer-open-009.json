@@ -1,0 +1,33 @@
+{
+  "coverage_category": "reconcile_buffer_replay",
+  "description": "Buffered reconcile replays the same version once and dedup keeps order count stable.",
+  "events": [
+    {
+      "fixture_id": "pw-fixture_public_alpha-5901-v1-open-long-protection",
+      "replay_count": 1
+    }
+  ],
+  "expected_chain_outcome": {
+    "distinct_orders": 1,
+    "latest_action": "open_long",
+    "latest_message_status": "EXECUTED",
+    "message_versions_seen": [
+      1
+    ],
+    "total_messages_persisted": 1
+  },
+  "expected_last_reconcile": {
+    "replayed_messages": 1,
+    "status": "ok"
+  },
+  "fixture_id": "scn-reconcile-buffer-open-009",
+  "reconcile_steps": [
+    {
+      "after_event_index": 0,
+      "buffered_fixture_ids": [
+        "pw-fixture_public_alpha-5901-v1-open-long-protection"
+      ]
+    }
+  ],
+  "scenario_id": "reconcile-buffer-open-009"
+}

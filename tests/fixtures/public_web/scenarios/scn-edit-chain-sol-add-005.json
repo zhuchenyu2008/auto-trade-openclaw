@@ -1,0 +1,33 @@
+{
+  "coverage_category": "edit_chain",
+  "description": "An edited short signal adds size on the second version.",
+  "events": [
+    {
+      "fixture_id": "pw-cryptoninjas_trading_ann-8102-v1-open-sol-short",
+      "replay_count": 1
+    },
+    {
+      "fixture_id": "pw-cryptoninjas_trading_ann-8102-v2-add-sol-short-edit",
+      "replay_count": 1
+    }
+  ],
+  "expected_chain_outcome": {
+    "distinct_orders": 2,
+    "latest_action": "add_short",
+    "latest_message_status": "EXECUTED",
+    "message_versions_seen": [
+      1,
+      2
+    ],
+    "total_messages_persisted": 2
+  },
+  "expected_open_positions": [
+    {
+      "qty": 250.0,
+      "side": "short",
+      "symbol": "SOL-USDT-SWAP"
+    }
+  ],
+  "fixture_id": "scn-edit-chain-sol-add-005",
+  "scenario_id": "edit-chain-sol-add-005"
+}

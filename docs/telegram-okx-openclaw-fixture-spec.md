@@ -1,6 +1,6 @@
 # Telegram OKX OpenClaw Fixture Specification
 
-Version: M0 planning baseline  
+Version: M1B target  
 Date: 2026-03-19
 
 ## 1. Purpose
@@ -81,6 +81,8 @@ Meaning:
   - multi-event chains for edit/replay/dedup/reconcile behavior
 - `manifests/corpus-index.json`
   - machine-readable summary of counts and coverage tags
+  - `coverage.summary` provides top-level per-bucket `target`, `actual`, `delta`, and `meets_target`
+  - `coverage.bucket_allocations` retains the detailed fixture and scenario breakdown
 
 ## 5. Naming Conventions
 
@@ -222,6 +224,13 @@ Useful optional fields:
 - `expected_last_reconcile`
 - `expected_remaining_orders`
 - `expected_open_positions`
+- `restart_after_event_indexes`
+- `reconcile_steps`
+
+`reconcile_steps` should be a list of objects with:
+
+- `after_event_index`
+- `buffered_fixture_ids`
 
 ## 8. HTML Fixture Schema
 
