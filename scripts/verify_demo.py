@@ -54,14 +54,14 @@ def main() -> int:
         print("expected demo-only guard to remain locked", file=sys.stderr)
         return 1
     current_profile_status = verify_payload["capabilities"]["current_operating_profile"]["status"]
-    if current_profile_status not in {"manual_ready", "attention"}:
-        print("expected current operating profile to remain in a manual-demo-ready/attention state", file=sys.stderr)
+    if current_profile_status != "ready":
+        print("expected current operating profile to reflect ready public_web local wiring", file=sys.stderr)
         return 1
     if verify_payload["activation_summary"]["manual_demo"]["status"] != "ready":
         print("expected activation_summary.manual_demo to be ready", file=sys.stderr)
         return 1
-    if verify_payload["activation_summary"]["automatic_telegram"]["status"] != "blocked":
-        print("expected activation_summary.automatic_telegram to remain blocked without bot wiring", file=sys.stderr)
+    if verify_payload["activation_summary"]["automatic_telegram"]["status"] != "ready":
+        print("expected activation_summary.automatic_telegram to reflect ready public_web ingestion", file=sys.stderr)
         return 1
     if "remaining_gaps" not in verify_payload:
         print("expected remaining_gaps in verify payload", file=sys.stderr)
@@ -84,8 +84,8 @@ def main() -> int:
         print("expected topic target link in direct-use artifact", file=sys.stderr)
         return 1
     direct_profile_status = direct_use_payload["capabilities"]["current_operating_profile"]["status"]
-    if direct_profile_status not in {"manual_ready", "attention"}:
-        print("expected direct-use artifact current profile to remain manual_ready/attention", file=sys.stderr)
+    if direct_profile_status != "ready":
+        print("expected direct-use artifact current profile to reflect ready public_web local wiring", file=sys.stderr)
         return 1
     if "profile_detail:" not in direct_use_text or "next_action:" not in direct_use_text:
         print("expected direct-use text artifact to expose profile detail and next action", file=sys.stderr)

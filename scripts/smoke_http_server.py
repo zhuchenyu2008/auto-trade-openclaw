@@ -125,6 +125,7 @@ def main() -> int:
                     "event_type": "new",
                 },
                 method="POST",
+                expect_status=201,
             )
             if injected["orders"][0]["status"] != "filled":
                 raise RuntimeError("Expected injected order to be filled in HTTP smoke")
@@ -134,6 +135,7 @@ def main() -> int:
                 f"{base_url}/api/positions/close",
                 data={},
                 method="POST",
+                expect_status=201,
             )
             if closed["closed"][0]["status"] != "filled":
                 raise RuntimeError("Expected close-all to succeed in HTTP smoke")

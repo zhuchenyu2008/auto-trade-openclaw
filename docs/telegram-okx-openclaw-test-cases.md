@@ -53,8 +53,9 @@ Date: 2026-03-19
 | `TC-FXT-002` | replay, reconcile, and dedup chains | none | Run `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/scenarios` | duplicate same-version events are suppressed, edit chains increment version, replay chains reconcile correctly | fixture suite JSON report plus scenario chain ids | existing |
 | `TC-FXT-003` | public_web HTML corpus | none | Run `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/html` | HTML pages/fragments normalize to the expected public-web post records | fixture suite JSON report plus stored normalized output | existing |
 
-## 4. Known Baseline Drifts To Capture When Executing Cases
+## 4. Current Repo-Local Execution Notes
 
-- `scripts/verify_demo.py` currently contains a stale readiness assertion and should not be treated as a stable gate until updated.
-- `python3 -m unittest discover -s tests -v` is not fully green in this workspace because `test_externalize_secrets_command_moves_inline_credentials_to_local_env` failed during M0 doc preparation.
-- Cases above remain valid for the scoped runtime surfaces because their hooks are separate from those two drifts.
+- `scripts/verify_demo.py` is a stable repo-local gate again and now expects `config.demo.local.json` to report `current_operating_profile=ready` and `automatic_telegram=ready` because the checked config uses enabled `public_web` channels.
+- The offline/local smoke scripts that exercise reconcile, Web, runtime, and operator flows use channel-less temp clones so those cases stay deterministic and do not depend on live `public_web` fetches.
+- `scripts/smoke_http_server.py` is non-gating when sandbox policy blocks local socket bind.
+- `scripts/smoke_okx_demo.py` is non-gating for `M2` when outbound network or DNS is unavailable; credentialed OKX demo validation remains part of `M3`.

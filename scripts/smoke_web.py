@@ -41,6 +41,7 @@ def main() -> int:
         config["trading"]["paused"] = False
         config["ai"]["provider"] = "heuristic"
         config["telegram"]["bot_token"] = ""
+        config["telegram"]["channels"] = []
         config["okx"]["enabled"] = False
         config_path = tmp_path / "config.json"
         config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")

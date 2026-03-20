@@ -190,27 +190,32 @@ Preferred evidence locations:
 - runtime artifacts under `runtime/.../direct-use.json`, `direct-use.txt`, `public-state.json`
 - saved fixture result reports once the fixture harness is implemented
 
-## 9. Baseline Status Observed During M0 Doc Preparation
+## 9. Repo-Local Status At M2 Completion
 
-The following repo-local checks were run while preparing this doc set:
+The following repo-local checks were run while completing the offline/local integration milestone:
 
 - `python3 -m unittest discover -s tests -v`
-- `python3 scripts/verify_demo.py --config config.demo.local.json`
+- `python3 scripts/run_demo_suite.py --config config.demo.local.json`
+- `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/messages`
+- `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/scenarios`
+- `python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/html`
 
 Observed results:
 
-- unit suite is close to green but not fully green: `118` tests ran, `1` failed
-- the failing unit test was `test_externalize_secrets_command_moves_inline_credentials_to_local_env`
-- `scripts/verify_demo.py` failed because it asserts an older readiness profile expectation (`manual_ready` or `attention`) that no longer matches the current repo state in this workspace
+- unit suite is green: `123` tests ran, `0` failed
+- `run_demo_suite.py` is green in repo-local offline mode
+- `smoke_http_server.py` is intentionally non-gating in this environment when local socket bind is blocked by the sandbox
+- `smoke_okx_demo.py` is intentionally non-gating in this environment when outbound network/DNS is unavailable; credentialed OKX demo coverage remains an `M3` gate
+- all three fixture-suite commands are green against the deterministic corpus
 
 Interpretation:
 
-- scoped runtime, parser, topic, web, and recovery surfaces have broad existing coverage
-- the repo still has baseline test drift that must be resolved before treating `run_demo_suite.py` as a release gate
+- the scoped repo-local `M2` command set is passable in offline/local mode
+- remaining release gating is now about fixture acceptance packaging and `M3` credentialed-demo evidence, not repo-local drift
 
 ## 10. Immediate Next-Milestone Priorities
 
-1. Add the 120+ public-web fixture corpus described in `docs/telegram-okx-openclaw-fixture-spec.md`.
-2. Implement a fixture runner that compares normalized parser output against the contract in those fixtures.
-3. Update stale smoke assertions so `verify_demo.py` and the unit suite reflect the current readiness model.
-4. Promote only the scoped surfaces in this plan to release-gating status.
+1. Preserve the current offline/local command set as the deterministic baseline for future repo-local changes.
+2. Run `M3` only in an operator-owned demo environment with outbound network, OpenClaw access, and OKX demo credentials.
+3. Keep `smoke_http_server.py` and `smoke_okx_demo.py` explicitly non-gating for offline/sandboxed execution where bind or network access is unavailable.
+4. Re-evaluate the final acceptance gate only after the credentialed evidence package exists.

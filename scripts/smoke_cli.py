@@ -47,6 +47,7 @@ def main() -> int:
         config["runtime"]["sqlite_path"] = str(tmp_path / "runtime" / "app.db")
         config["ai"]["provider"] = "heuristic"
         config["telegram"]["bot_token"] = ""
+        config["telegram"]["channels"] = []
         config["okx"]["enabled"] = False
         config["trading"]["mode"] = "demo"
         config["trading"]["execution_mode"] = "automatic"

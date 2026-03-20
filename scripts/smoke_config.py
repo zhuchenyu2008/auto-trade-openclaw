@@ -84,9 +84,12 @@ def main() -> int:
                     raise RuntimeError("expected normalized operator topic link in usage paths")
                 if report["snapshot"]["config"]["telegram"]["operator_thread_id"] != 2080:
                     raise RuntimeError("expected operator thread id to stay aligned with the normalized topic target")
-                if report["snapshot"]["config"]["telegram"]["channels"][0]["chat_id"] != "-1003720752566":
+                channels_by_id = {
+                    item["id"]: item for item in report["snapshot"]["config"]["telegram"]["channels"]
+                }
+                if channels_by_id[linked_channel["id"]]["chat_id"] != "-1003720752566":
                     raise RuntimeError("expected chat link channel to persist as an internal chat id")
-                if report["snapshot"]["config"]["telegram"]["channels"][1]["channel_username"] != "Vip_BTC":
+                if channels_by_id[named_channel["id"]]["channel_username"] != "Vip_BTC":
                     raise RuntimeError("expected username link channel to persist as a normalized username")
                 if not Path(report["run_paths"]["runtime_direct_use_json"]).is_file():
                     raise RuntimeError("expected runtime direct-use artifact to exist after reload")

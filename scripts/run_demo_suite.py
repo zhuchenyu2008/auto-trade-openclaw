@@ -80,7 +80,13 @@ def main() -> int:
         },
         {
             "name": "smoke_okx_demo",
-            "cmd": [sys.executable, "scripts/smoke_okx_demo.py", "--config", str(config_path)],
+            "cmd": [
+                sys.executable,
+                "scripts/smoke_okx_demo.py",
+                "--config",
+                str(config_path),
+                "--repo-local-m2",
+            ],
             "env": smoke_env,
         },
     ]

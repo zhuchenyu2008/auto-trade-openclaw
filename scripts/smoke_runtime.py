@@ -37,6 +37,7 @@ def main() -> int:
         config["runtime"]["config_reload_seconds"] = 1
         config["ai"]["provider"] = "heuristic"
         config["telegram"]["bot_token"] = ""
+        config["telegram"]["channels"] = []
         config["okx"]["enabled"] = False
         config["trading"]["mode"] = "demo"
         config["trading"]["execution_mode"] = "automatic"

@@ -20,8 +20,8 @@ Passing this gate does not authorize live trading.
 | Milestone | Goal | Required output | Gate status today |
 | --- | --- | --- | --- |
 | `M0` | repo-local docs baseline | the core testing docs under `docs/` are present and aligned to code | completed by this task |
-| `M1` | deterministic fixture milestone | 120+ public-web fixtures, fixture runner, coverage manifest, updated case evidence | open |
-| `M2` | repo-local integration milestone | scoped unit/smoke suite green in offline/local mode | open |
+| `M1` | deterministic fixture milestone | 120+ public-web fixtures, fixture runner, coverage manifest, updated case evidence | completed before this task |
+| `M2` | repo-local integration milestone | scoped unit/smoke suite green in offline/local mode | completed in this task |
 | `M3` | credentialed demo acceptance milestone | public_web + OpenClaw + topic + OKX demo pass in operator-owned env | open |
 
 ## 3. Final Acceptance Gate
@@ -56,8 +56,9 @@ python3 scripts/run_fixture_suite.py --fixtures tests/fixtures/public_web/html
 
 Notes:
 
-- the three `run_fixture_suite.py` commands are planned and do not exist yet
-- `run_demo_suite.py` is not a trustworthy final gate until the stale assertions documented in M0 are corrected
+- the three `run_fixture_suite.py` commands exist and are part of the repo-local gate
+- `run_demo_suite.py` is a trustworthy repo-local gate again after the stale readiness/assertion drift was corrected
+- for offline/sandboxed `M2` execution, `smoke_http_server.py` may report `skipped` when local socket bind is blocked and `smoke_okx_demo.py` may report `skipped` when outbound network or DNS is unavailable; those skips are non-gating for `M2` only
 
 ### 3.3 Required Evidence Package
 
@@ -84,21 +85,15 @@ Any of the following blocks release:
 - fixture milestone is skipped
 - baseline test drift remains in release-gating commands
 
-## 5. Current Status At M0
+## 5. Current Status After M2
 
 Current status is not release-ready.
 
 Reasons:
 
-- the 120+ fixture corpus does not exist yet
-- the fixture runner does not exist yet
-- `python3 -m unittest discover -s tests -v` was not fully green during M0 doc preparation
-- `scripts/verify_demo.py` still contains a stale readiness assumption
-- no credentialed demo validation was run in this task by design
+- `M3` credentialed demo acceptance has not been run in this task by design
 
 ## 6. Recommended Next Sequence
 
-1. Complete `M1` by implementing the fixture corpus and fixture runner exactly against the fixture spec.
-2. Repair current repo-local drift so `M2` has a clean deterministic baseline.
-3. Run `M3` only in an operator-owned demo environment with outbound network, OpenClaw access, and OKX demo credentials.
-4. Re-evaluate this final gate only after those artifacts exist.
+1. Run `M3` only in an operator-owned demo environment with outbound network, OpenClaw access, and OKX demo credentials.
+2. Re-evaluate this final gate only after those artifacts exist.
