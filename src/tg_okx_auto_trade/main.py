@@ -49,11 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     pause = subparsers.add_parser("pause")
     pause.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
-    pause.add_argument("--reason", default="Manual pause from CLI")
+    pause.add_argument("--reason", default="CLI 手动暂停")
 
     resume = subparsers.add_parser("resume")
     resume.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
-    resume.add_argument("--reason", default="Manual resume from CLI")
+    resume.add_argument("--reason", default="CLI 手动恢复")
 
     reconcile = subparsers.add_parser("reconcile")
     reconcile.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
@@ -78,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     upsert_channel.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
     upsert_channel.add_argument("--id")
     upsert_channel.add_argument("--name", required=True)
-    upsert_channel.add_argument("--source-type", default="bot_api", choices=["bot_api", "mtproto"])
+    upsert_channel.add_argument("--source-type", default="public_web", choices=["public_web", "bot_api", "mtproto"])
     upsert_channel.add_argument("--chat-id", default="")
     upsert_channel.add_argument("--channel-username", default="")
     upsert_channel.add_argument("--enabled", action="store_true")

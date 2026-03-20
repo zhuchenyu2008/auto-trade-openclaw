@@ -14,7 +14,10 @@ from unittest import mock
 from tg_okx_auto_trade.ai import OpenClawAI
 from tg_okx_auto_trade.config import hash_pin
 from tg_okx_auto_trade.models import NormalizedMessage, TradingIntent
-from tg_okx_auto_trade.runtime import Runtime
+from tg_okx_auto_trade.runtime import (
+    DEFAULT_DEMO_SIGNAL_TEXT,
+    Runtime,
+)
 from tg_okx_auto_trade.telegram import parse_public_channel_html
 from tg_okx_auto_trade.web import WebController
 
@@ -182,6 +185,13 @@ class AppTests(unittest.TestCase):
     def test_global_tp_sl_disabled_by_default(self):
         snapshot = self.runtime.snapshot()
         self.assertFalse(snapshot["config"]["trading"]["global_tp_sl_enabled"])
+
+    def test_default_demo_signal_text_uses_explicit_amount_sample(self):
+        self.assertEqual(DEFAULT_DEMO_SIGNAL_TEXT, "LONG ADAUSDT $1")
+        intent = self.runtime.ai.parse(self._message(DEFAULT_DEMO_SIGNAL_TEXT), [], {})
+        self.assertEqual(intent.symbol, "ADA-USDT-SWAP")
+        self.assertEqual(intent.size_value, 1.0)
+        self.assertFalse(intent.require_manual_confirmation)
 
     def test_snapshot_exposes_recent_pipeline_state(self):
         self.runtime.process_message(self._message("LONG BTCUSDT"))
@@ -1023,6 +1033,154 @@ class AppTests(unittest.TestCase):
         self.assertEqual(snapshot["positions"][0]["payload"]["side"], "flat")
         self.assertEqual(snapshot["positions"][0]["payload"]["qty"], 0.0)
 
+    def test_public_web_openclaw_close_all_skips_unknown_okx_instrument_without_auto_pause(self):
+        self.runtime.update_config(
+            {
+                "ai": {"provider": "openclaw", "openclaw_agent_id": "tgokxai"},
+                "okx": {
+                    "enabled": True,
+                    "api_key": "api-key",
+                    "api_secret": "api-secret",
+                    "passphrase": "passphrase",
+                },
+            }
+        )
+        requests: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def fake_request(method, path, body=None):
+            requests.append((method, path, body))
+            if method == "GET" and path == "/api/v5/account/positions?instId=MOODENG-USDT-SWAP":
+                return {
+                    "code": "51000",
+                    "msg": "Instrument ID, Instrument ID code, or Spread ID doesn't exist.",
+                    "data": [],
+                }
+            raise AssertionError(f"unexpected OKX request: {(method, path, body)}")
+
+        openclaw_reply = json.dumps(
+            {
+                "executable": True,
+                "action": "close",
+                "symbol": "MOODENG-USDT-SWAP",
+                "market_type": "swap",
+                "side": None,
+                "entry_type": "market",
+                "size_mode": None,
+                "size_value": None,
+                "leverage": 20,
+                "margin_mode": "isolated",
+                "risk_level": "medium",
+                "tp": [],
+                "sl": None,
+                "trailing": None,
+                "require_manual_confirmation": False,
+                "confidence": 0.98,
+                "reason": "close at entry",
+            }
+        )
+        message = NormalizedMessage.from_public_web(
+            "cryptoninjas_trading_ann",
+            "new",
+            {
+                "channel_username": "cryptoninjas_trading_ann",
+                "message_id": 99203,
+                "date": "2026-03-20T01:49:46+00:00",
+                "text": "MOODENG close at entry, wait for new entry",
+                "caption": "",
+            },
+        )
+
+        with mock.patch.object(self.runtime.ai, "_run_openclaw", return_value=openclaw_reply):
+            with mock.patch.object(self.runtime.okx, "_request", side_effect=fake_request):
+                self.runtime.process_message(message)
+
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "EXECUTED")
+        self.assertFalse(snapshot["config"]["trading"]["paused"])
+        self.assertEqual([item[1] for item in requests], ["/api/v5/account/positions?instId=MOODENG-USDT-SWAP"])
+        self.assertEqual(snapshot["orders"][0]["action"], "close_all")
+        self.assertEqual(snapshot["orders"][0]["status"], "skipped")
+        self.assertEqual(snapshot["orders"][0]["payload"]["execution_path"], "real_demo_rest")
+        self.assertIn("does not recognize the instrument id", snapshot["orders"][0]["payload"]["reason"])
+
+    def test_public_web_openclaw_close_all_skips_when_exchange_position_is_already_flat(self):
+        self.runtime.update_config(
+            {
+                "ai": {"provider": "openclaw", "openclaw_agent_id": "tgokxai"},
+                "okx": {
+                    "enabled": True,
+                    "api_key": "api-key",
+                    "api_secret": "api-secret",
+                    "passphrase": "passphrase",
+                },
+            }
+        )
+        requests: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def fake_request(method, path, body=None):
+            requests.append((method, path, body))
+            if method == "GET" and path == "/api/v5/account/positions?instId=BTC-USDT-SWAP":
+                return {
+                    "code": "0",
+                    "msg": "",
+                    "data": [
+                        {
+                            "instId": "BTC-USDT-SWAP",
+                            "pos": "0",
+                            "posSide": "net",
+                            "mgnMode": "isolated",
+                            "lever": "20",
+                            "avgPx": "",
+                            "upl": "0",
+                        }
+                    ],
+                }
+            raise AssertionError(f"unexpected OKX request: {(method, path, body)}")
+
+        openclaw_reply = json.dumps(
+            {
+                "executable": True,
+                "action": "close",
+                "symbol": "BTC-USDT-SWAP",
+                "market_type": "swap",
+                "side": None,
+                "entry_type": "market",
+                "size_mode": None,
+                "size_value": None,
+                "leverage": 20,
+                "margin_mode": "isolated",
+                "risk_level": "medium",
+                "tp": [],
+                "sl": None,
+                "trailing": None,
+                "require_manual_confirmation": False,
+                "confidence": 0.98,
+                "reason": "close flat",
+            }
+        )
+        message = NormalizedMessage.from_public_web(
+            "cryptoninjas_trading_ann",
+            "new",
+            {
+                "channel_username": "cryptoninjas_trading_ann",
+                "message_id": 99204,
+                "date": "2026-03-20T01:49:46+00:00",
+                "text": "BTC close at entry, wait for new entry",
+                "caption": "",
+            },
+        )
+
+        with mock.patch.object(self.runtime.ai, "_run_openclaw", return_value=openclaw_reply):
+            with mock.patch.object(self.runtime.okx, "_request", side_effect=fake_request):
+                self.runtime.process_message(message)
+
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "EXECUTED")
+        self.assertFalse(snapshot["config"]["trading"]["paused"])
+        self.assertEqual([item[1] for item in requests], ["/api/v5/account/positions?instId=BTC-USDT-SWAP"])
+        self.assertEqual(snapshot["orders"][0]["status"], "skipped")
+        self.assertIn("no open quantity", snapshot["orders"][0]["payload"]["reason"])
+
     def test_invalid_position_mode_is_rejected(self):
         with self.assertRaises(ValueError):
             self.runtime.update_config({"trading": {"position_mode": "long_short"}})
@@ -1333,12 +1491,16 @@ class AppTests(unittest.TestCase):
         self.assertIn("/topic-test", paths["operator_command_examples"])
         self.assertGreaterEqual(len(paths["activation_checklist"]), 3)
         self.assertEqual(paths["setup_examples"]["operator_target"], "https://t.me/c/3720752566/2080")
-        self.assertEqual(paths["setup_examples"]["source_channel"]["source_type"], "bot_api")
-        self.assertEqual(paths["setup_examples"]["telegram_patch"]["telegram"]["bot_token"], "<set-locally>")
+        self.assertEqual(paths["setup_examples"]["source_channel"]["source_type"], "public_web")
+        self.assertEqual(
+            paths["setup_examples"]["source_channel"]["channel_username"],
+            "https://t.me/s/lbeobhpreo",
+        )
+        self.assertNotIn("bot_token", paths["setup_examples"]["telegram_patch"]["telegram"])
         self.assertEqual(paths["setup_examples"]["okx_demo_patch"]["okx"]["api_key"], "<set-locally>")
         self.assertEqual(
             paths["setup_examples"]["telegram_patch"]["telegram"]["channels"][0]["id"],
-            "vip-btc",
+            "vip-public",
         )
 
     def test_runtime_writes_public_runtime_artifacts(self):
@@ -1457,18 +1619,18 @@ class AppTests(unittest.TestCase):
             paths = self.runtime.usage_paths()
         self.assertEqual(capabilities["current_operating_profile"]["status"], "manual_ready")
         self.assertIn("direct manual/demo use", capabilities["current_operating_profile"]["detail"])
-        self.assertIn("telegram.bot_token", capabilities["current_operating_profile"]["detail"])
+        self.assertIn("enabled public_web source channel", capabilities["current_operating_profile"]["detail"])
         self.assertEqual(capabilities["manual_demo_pipeline"]["status"], "ready")
         self.assertEqual(capabilities["okx_demo_execution"]["status"], "ready")
         self.assertEqual(capabilities["telegram_ingestion"]["status"], "blocked")
-        self.assertIn("telegram.bot_token", capabilities["telegram_ingestion"]["detail"])
+        self.assertIn("public_web", capabilities["telegram_ingestion"]["detail"])
         self.assertEqual(capabilities["operator_topic"]["status"], "partial")
         self.assertIn("not been verified yet", capabilities["operator_topic"]["detail"])
         self.assertEqual(activation["overall_profile"]["status"], "manual_ready")
         self.assertEqual(activation["manual_demo"]["status"], "ready")
         self.assertEqual(activation["automatic_telegram"]["status"], "blocked")
         self.assertEqual(activation["operator_topic_outbound"]["status"], "configured")
-        self.assertEqual(activation["operator_topic_inbound"]["status"], "blocked")
+        self.assertEqual(activation["operator_topic_inbound"]["status"], "legacy")
         self.assertEqual(capabilities["demo_only_guard"]["status"], "locked")
         self.assertEqual(paths["manual_signal_default_path"], "simulated_demo")
         self.assertEqual(paths["manual_signal_configured_path"], "real_demo_rest")
@@ -1495,13 +1657,13 @@ class AppTests(unittest.TestCase):
         wiring = self.runtime.wiring_summary()
 
         self.assertEqual(capabilities["telegram_ingestion"]["status"], "ready")
-        self.assertIn("not required", capabilities["telegram_ingestion"]["detail"])
+        self.assertIn("intended supported automatic ingestion path", capabilities["telegram_ingestion"]["detail"])
         self.assertEqual(activation["automatic_telegram"]["status"], "ready")
         self.assertEqual(checks["telegram_watcher"]["status"], "pass")
         self.assertIn("public_web", checks["telegram_watcher"]["detail"])
         self.assertNotIn("telegram_bot_token", gaps)
-        self.assertEqual(gaps["telegram_operator_inbound_token"]["status"], "partial")
-        self.assertEqual(activation["operator_topic_inbound"]["status"], "blocked")
+        self.assertNotIn("telegram_operator_inbound_token", gaps)
+        self.assertEqual(activation["operator_topic_inbound"]["status"], "legacy")
         self.assertEqual(wiring["operator_command_ingress"], "configured_without_bot_token")
 
     def test_heuristic_parser_extracts_symbol_from_public_web_hashtag_signal(self):
@@ -1817,12 +1979,13 @@ class AppTests(unittest.TestCase):
         self.assertIn("current_operating_profile", report["capabilities"])
         self.assertIn("operator_topic_outbound", report["activation_summary"])
         self.assertEqual(report["capabilities"]["demo_only_guard"]["status"], "locked")
-        self.assertIn("telegram_bot_token", {item["id"] for item in report["remaining_gaps"]})
+        self.assertIn("telegram_source_legacy_bot_api", {item["id"] for item in report["remaining_gaps"]})
 
     def test_verification_report_preserves_placeholder_setup_examples(self):
         report = self.runtime.public_verification_report()
         setup_examples = report["run_paths"]["setup_examples"]
-        self.assertEqual(setup_examples["telegram_patch"]["telegram"]["bot_token"], "<set-locally>")
+        self.assertNotIn("bot_token", setup_examples["telegram_patch"]["telegram"])
+        self.assertEqual(setup_examples["source_channel"]["source_type"], "public_web")
         self.assertEqual(setup_examples["okx_demo_patch"]["okx"]["api_key"], "<set-locally>")
         self.assertEqual(setup_examples["okx_demo_patch"]["okx"]["api_secret"], "<set-locally>")
         self.assertEqual(setup_examples["okx_demo_patch"]["okx"]["passphrase"], "<set-locally>")
@@ -1869,9 +2032,9 @@ class AppTests(unittest.TestCase):
             runtime.update_config({"trading": {"default_leverage": 21}})
 
         persisted = json.loads(config_path.read_text(encoding="utf-8"))
-        self.assertEqual(capabilities["telegram_ingestion"]["status"], "ready")
-        self.assertEqual(capabilities["operator_topic"]["status"], "ready")
-        self.assertEqual(snapshot["activation_summary"]["operator_topic_inbound"]["status"], "ready")
+        self.assertEqual(capabilities["telegram_ingestion"]["status"], "partial")
+        self.assertEqual(capabilities["operator_topic"]["status"], "partial")
+        self.assertEqual(snapshot["activation_summary"]["operator_topic_inbound"]["status"], "legacy")
         self.assertEqual(wiring["operator_command_ingress"], "ready")
         self.assertTrue(snapshot["secret_status"]["telegram_bot_token_configured"])
         self.assertEqual(snapshot["secret_sources"]["telegram_bot_token"], "env")
@@ -1993,8 +2156,8 @@ class AppTests(unittest.TestCase):
         self.assertTrue(snapshot["secret_status"]["telegram_bot_token_configured"])
         self.assertEqual(snapshot["secret_sources"]["telegram_bot_token"], "env")
         self.assertEqual(snapshot["wiring"]["operator_command_ingress"], "ready")
-        self.assertEqual(snapshot["capabilities"]["telegram_ingestion"]["status"], "ready")
-        self.assertEqual(snapshot["activation_summary"]["operator_topic_inbound"]["status"], "ready")
+        self.assertEqual(snapshot["capabilities"]["telegram_ingestion"]["status"], "partial")
+        self.assertEqual(snapshot["activation_summary"]["operator_topic_inbound"]["status"], "legacy")
         self.assertEqual(snapshot["config"]["telegram"]["bot_token"], "")
         self.assertEqual(persisted["telegram"]["bot_token"], "")
 
@@ -2108,15 +2271,14 @@ class AppTests(unittest.TestCase):
         self.assertEqual(capabilities["current_operating_profile"]["status"], "manual_ready")
         self.assertIn("operator topic target", capabilities["current_operating_profile"]["detail"])
 
-    def test_verification_report_marks_operator_topic_commands_as_partial_gap(self):
+    def test_verification_report_marks_operator_topic_commands_as_legacy_scope(self):
         self.runtime.update_config({"telegram": {"operator_target": "https://t.me/c/3720752566/2080"}})
         report = self.runtime.public_verification_report()
-        gaps = {item["id"]: item for item in report["remaining_gaps"]}
-        self.assertEqual(gaps["operator_topic_inbound"]["status"], "partial")
-        self.assertIn("inbound commands are implemented", gaps["operator_topic_inbound"]["detail"])
-        self.assertIn("inbound operator commands are implemented", report["capabilities"]["operator_topic"]["detail"])
+        self.assertEqual(report["activation_summary"]["operator_topic_inbound"]["status"], "legacy")
+        self.assertIn("legacy/internal", report["activation_summary"]["operator_topic_inbound"]["detail"])
+        self.assertIn("legacy/internal", report["capabilities"]["operator_topic"]["detail"])
 
-    def test_verification_report_next_steps_call_out_missing_bot_api_channel(self):
+    def test_verification_report_next_steps_call_out_missing_public_web_channel(self):
         self.runtime.update_config(
             {
                 "telegram": {
@@ -2149,7 +2311,7 @@ class AppTests(unittest.TestCase):
         )
         report = self.runtime.public_verification_report()
         joined = "\n".join(report["next_steps"])
-        self.assertIn("enabled `bot_api` Telegram channel entry", joined)
+        self.assertIn("enabled `public_web` Telegram channel entry", joined)
 
     def test_verification_report_next_steps_include_topic_smoke_when_operator_topic_is_configured(self):
         self.runtime.update_config({"telegram": {"operator_target": "https://t.me/c/3720752566/2080"}})
@@ -2157,7 +2319,7 @@ class AppTests(unittest.TestCase):
             report = self.runtime.public_verification_report()
         joined = "\n".join(report["next_steps"])
         self.assertIn("topic-test", joined)
-        self.assertIn("Topic Smoke", joined)
+        self.assertIn("topic smoke", joined.lower())
 
     def test_verification_report_surfaces_partial_okx_action_coverage_gap(self):
         self.runtime.update_config(
@@ -2288,7 +2450,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(snapshot["wiring"]["operator_command_ingress"], "ready")
         self.assertEqual(snapshot["wiring"]["okx_execution_path"], "real_demo_rest")
         self.assertEqual(snapshot["activation_summary"]["manual_demo"]["status"], "ready")
-        self.assertEqual(snapshot["activation_summary"]["operator_topic_inbound"]["status"], "ready")
+        self.assertEqual(snapshot["activation_summary"]["operator_topic_inbound"]["status"], "legacy")
         self.assertIn(snapshot["verification_status"], {"ok", "warn"})
         self.assertTrue(snapshot["next_steps"])
         self.assertNotIn("payload_json", snapshot["logs"][0])
@@ -2333,18 +2495,34 @@ class AppTests(unittest.TestCase):
         self.assertIn("direct_use_text", state)
         self.assertIn("TG OKX Auto Trade Direct-Use Summary", state["direct_use_text"])
         self.assertEqual(state["capabilities"]["demo_only_guard"]["status"], "locked")
+        self.assertIn(DEFAULT_DEMO_SIGNAL_TEXT, state["run_paths"]["inject_demo_signal_command"])
 
         status, _, payload = controller.route(
             "POST",
             "/api/inject-message",
             body=json.dumps(
-                {"text": "LONG BTCUSDT now", "chat_id": "-1001", "message_id": 77, "event_type": "new"}
+                {"text": DEFAULT_DEMO_SIGNAL_TEXT, "chat_id": "-1001", "message_id": 77, "event_type": "new"}
             ).encode("utf-8"),
             headers={"Cookie": session_cookie, "Content-Type": "application/json"},
         )
         self.assertEqual(status, 201)
         self.assertEqual(payload["orders"][0]["status"], "filled")
         self.assertEqual(payload["orders"][0]["payload"]["execution_path"], "simulated_demo")
+        self.assertEqual(payload["orders"][0]["symbol"], "ADA-USDT-SWAP")
+
+        status, _, payload = controller.route(
+            "POST",
+            "/api/inject-message",
+            body=json.dumps(
+                {"text": DEFAULT_DEMO_SIGNAL_TEXT, "chat_id": "-1001", "message_id": 78, "event_type": "new"}
+            ).encode("utf-8"),
+            headers={"Cookie": session_cookie, "Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(len(payload["orders"]), 2)
+        self.assertEqual(payload["orders"][-1]["status"], "filled")
+        self.assertEqual(payload["messages"][0]["message_id"], 78)
+        self.assertEqual(payload["messages"][1]["message_id"], 77)
 
         status, _, ready = controller.route("GET", "/readyz")
         self.assertEqual(status, 200)
@@ -2383,7 +2561,7 @@ class AppTests(unittest.TestCase):
                 "/api/inject-message",
                 body=json.dumps(
                     {
-                        "text": "LONG BTCUSDT now",
+                        "text": DEFAULT_DEMO_SIGNAL_TEXT,
                         "chat_id": "-1001",
                         "message_id": 78,
                         "event_type": "new",
@@ -2520,7 +2698,7 @@ class AppTests(unittest.TestCase):
         self.assertIn("network blocked", checks["topic_logger"]["detail"])
         self.assertEqual(checks["operator_commands"]["status"], "warn")
 
-    def test_readiness_passes_operator_commands_when_bot_token_and_topic_exist(self):
+    def test_readiness_marks_operator_commands_as_legacy_even_when_bot_token_and_topic_exist(self):
         self.runtime.update_config(
             {
                 "telegram": {
@@ -2530,8 +2708,8 @@ class AppTests(unittest.TestCase):
             }
         )
         checks = {item["name"]: item for item in self.runtime.readiness_checks()}
-        self.assertEqual(checks["operator_commands"]["status"], "pass")
-        self.assertIn("configured Telegram bot", checks["operator_commands"]["detail"])
+        self.assertEqual(checks["operator_commands"]["status"], "warn")
+        self.assertIn("legacy/internal", checks["operator_commands"]["detail"])
 
     def test_web_pause_resume_and_topic_link_patch(self):
         runtime = Runtime(self.root / "config.json")
@@ -2685,6 +2863,33 @@ class AppTests(unittest.TestCase):
         self.assertEqual(headers["Location"], "/")
         self.assertEqual(payload, "")
 
+    def test_web_homepage_html_avoids_optional_chaining_and_nullish_coalescing(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, headers, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
+        self.assertIn("Telegram OKX Auto Trade", body)
+        self.assertNotIn("?.", body)
+        self.assertNotIn("??", body)
+        self.assertNotIn("`-100...:topic:...`", body)
+        self.assertNotIn("`chat_id` accepts raw", body)
+        self.assertIn("<code>-100...:topic:...</code>", body)
+        self.assertIn("let latestLoadRequestId = 0;", body)
+        self.assertIn("requestId !== latestLoadRequestId", body)
+        self.assertIn("await load();", body)
+
     def test_runtime_operator_command_status_and_close(self):
         self.runtime.process_message(self._message("LONG BTCUSDT SIZE 1"))
         status_result = self.runtime.run_operator_command("/status", source="test")
@@ -2704,7 +2909,7 @@ class AppTests(unittest.TestCase):
         channels_result = self.runtime.run_operator_command("/channels", source="test")
         self.assertEqual(channels_result["status"], "ok")
         self.assertIn("[channels]", channels_result["reply"])
-        self.assertIn("test enabled bot_api", channels_result["reply"])
+        self.assertIn("test 已启用 bot_api", channels_result["reply"])
 
         signals_result = self.runtime.run_operator_command("/signals 2", source="test")
         self.assertEqual(signals_result["status"], "ok")

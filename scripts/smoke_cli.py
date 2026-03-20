@@ -150,7 +150,7 @@ def main() -> int:
             "--config",
             str(config_path),
             "--text",
-            "LONG BTCUSDT SIZE 1",
+            "LONG ADAUSDT $1",
             "--chat-id",
             "-1000000000000",
             "--message-id",

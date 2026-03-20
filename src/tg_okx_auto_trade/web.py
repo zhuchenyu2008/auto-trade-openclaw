@@ -8,7 +8,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
 from .config import public_config_dict
-from .runtime import Runtime
+from .runtime import (
+    DEFAULT_DEMO_SIGNAL_CHAT_ID,
+    DEFAULT_DEMO_SIGNAL_MESSAGE_ID,
+    DEFAULT_DEMO_SIGNAL_TEXT,
+    Runtime,
+)
 
 
 HTML = """<!doctype html>
@@ -50,6 +55,7 @@ HTML = """<!doctype html>
   </header>
   <main id="app"></main>
   <script>
+    let latestLoadRequestId = 0;
     async function api(path, options={}) {
       const res = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, options));
       if (res.status === 401) { location.href = '/login'; return; }
@@ -57,15 +63,24 @@ HTML = """<!doctype html>
         const text = await res.text();
         throw new Error(text || ('Request failed: ' + res.status));
       }
-      if (res.headers.get('content-type')?.includes('application/json')) return res.json();
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) return res.json();
       return res.text();
     }
-    function esc(v){ return String(v ?? '').replace(/[&<>]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[s])); }
+    function esc(v){ return String(v == null ? '' : v).replace(/[&<>]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[s])); }
     function render(data) {
       window.currentState = data;
+      const demoSignalText = __DEMO_SIGNAL_TEXT__;
+      const nextDemoSignalMessageId = data.messages.reduce((maxId, item) => {
+        const messageId = Number(item && item.message_id);
+        return Number.isFinite(messageId) ? Math.max(maxId, messageId) : maxId;
+      }, __DEMO_SIGNAL_MESSAGE_ID__ - 1) + 1;
       document.getElementById('modeBox').textContent = data.config.trading.mode + ' / ' + data.config.trading.execution_mode;
       document.getElementById('webBindBox').textContent = data.wiring.web_server_active ? ('Serving ' + data.wiring.web_bind) : ('Configured ' + data.wiring.web_bind);
-      const openPositions = data.positions.filter(item => Number(item?.payload?.qty || 0) > 0 && ['long', 'short'].includes(String(item?.payload?.side || '')));
+      const openPositions = data.positions.filter(item => {
+        const payload = item && item.payload ? item.payload : {};
+        return Number(payload.qty || 0) > 0 && ['long', 'short'].includes(String(payload.side || ''));
+      });
       const readiness = data.readiness_checks.map(item => `<tr><td>${esc(item.name)}</td><td>${esc(item.status)}</td><td>${esc(item.detail)}</td></tr>`).join('');
       const logs = data.logs.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.level)}</td><td>${esc(item.category)}</td><td>${esc(item.message)}</td></tr>`).join('');
       const auditLogs = data.audit_logs.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.category)}</td><td>${esc(item.message)}</td></tr>`).join('');
@@ -84,7 +99,7 @@ HTML = """<!doctype html>
       const remainingGaps = (data.remaining_gaps || []).map(item => `<tr><td>${esc(item.id)}</td><td>${esc(item.scope)}</td><td>${esc(item.status)}</td><td>${esc(item.detail)}</td><td>${esc(item.action)}</td></tr>`).join('');
       const activationChecklist = (data.run_paths.activation_checklist || []).map(item => `<tr><td>${esc(item)}</td></tr>`).join('');
       const nextSteps = (data.next_steps || []).map(item => `<tr><td>${esc(item)}</td></tr>`).join('');
-      const directUseProfile = data.capabilities?.current_operating_profile || {status:'unknown', detail:'n/a', action:'n/a'};
+      const directUseProfile = (data.capabilities && data.capabilities.current_operating_profile) || {status:'unknown', detail:'n/a', action:'n/a'};
       document.getElementById('app').innerHTML = `
         <section class="card"><h2>Dashboard</h2>
           <div class="grid2">
@@ -205,10 +220,8 @@ HTML = """<!doctype html>
         </section>
         <section class="card"><h2>Telegram Wiring</h2>
           <form id="telegramForm">
-            <div class="muted">Bot token configured: ${esc(data.secret_status.telegram_bot_token_configured)}. Source: ${esc(data.secret_sources.telegram_bot_token)}. Leave blank to keep the existing token.</div>
-            <input name="bot_token" value="" placeholder="set or rotate bot token">
-            <label class="muted"><input name="clear_bot_token" type="checkbox" value="true"> clear the stored bot token on save</label>
-            <div class="muted">Topic target accepts either `-100...:topic:...` or a `https://t.me/c/.../...` topic link.</div>
+            <div class="muted">主支持自动采集路径是 <code>public_web</code> 公共页面抓取。这里主要配置话题日志与轮询参数。</div>
+            <div class="muted">Topic target accepts either <code>-100...:topic:...</code> or a <code>https://t.me/c/.../...</code> topic link.</div>
             <div class="grid2">
               <input name="report_topic" value="${esc(data.config.telegram.report_topic)}" placeholder="report topic or https://t.me/c/.../...">
               <input name="operator_target" value="${esc(data.config.telegram.operator_target)}" placeholder="operator target or https://t.me/c/.../...">
@@ -217,11 +230,17 @@ HTML = """<!doctype html>
               <input name="operator_thread_id" type="number" min="0" value="${esc(data.config.telegram.operator_thread_id)}" placeholder="thread id">
               <input name="poll_interval_seconds" type="number" min="1" value="${esc(data.config.telegram.poll_interval_seconds)}">
             </div>
+            <details>
+              <summary class="muted">遗留 bot_api / bot token 兼容项</summary>
+              <div class="muted">Bot token configured: ${esc(data.secret_status.telegram_bot_token_configured)}. Source: ${esc(data.secret_sources.telegram_bot_token)}. Leave blank to keep the existing token.</div>
+              <input name="bot_token" value="" placeholder="legacy bot token">
+              <label class="muted"><input name="clear_bot_token" type="checkbox" value="true"> clear the stored bot token on save</label>
+            </details>
             <button>Save Telegram Config</button>
           </form>
         </section>
         <section class="card"><h2>Operator Commands</h2>
-          <div class="muted">Use these commands from the operator topic after the bot can receive topic messages, or dry-run them here first.</div>
+          <div class="muted">小 Claw 操作面默认走本地 / Web dry-run。Telegram 话题内入站 bot 命令属于遗留兼容，不是主支持路径。</div>
           <div class="muted">${esc((data.run_paths.operator_command_examples || []).join('  '))}</div>
           <form id="operatorCommandForm">
             <input name="text" value="/status" placeholder="/status">
@@ -233,11 +252,11 @@ HTML = """<!doctype html>
           <form id="channelForm">
             <input name="id" placeholder="channel id (leave empty to derive)">
             <input name="name" placeholder="display name">
-            <div class="muted">`chat_id` accepts raw `-100...` or `https://t.me/c/.../...`; `channel_username` accepts `@name`, `https://t.me/name`, or `https://t.me/s/name` for `public_web`.</div>
+            <div class="muted">自动采集主路径请使用 <code>public_web</code>。<code>channel_username</code> accepts <code>@name</code>, <code>https://t.me/name</code>, or <code>https://t.me/s/name</code>. <code>chat_id</code> is only needed for legacy/internal adapters.</div>
             <div class="grid2">
               <select name="source_type">
-                <option value="bot_api">bot_api</option>
                 <option value="public_web">public_web</option>
+                <option value="bot_api">bot_api (legacy)</option>
                 <option value="mtproto">mtproto</option>
               </select>
               <input name="chat_id" placeholder="-100... or https://t.me/c/.../...">
@@ -259,11 +278,12 @@ HTML = """<!doctype html>
         </section>
         <section class="card"><h2>Demo Signal Test</h2>
           <div class="muted">Manual signal injection defaults to the simulated engine. Choose configured path only when you explicitly want an OKX demo REST order.</div>
+          <div class="muted">The built-in sample advances the message id automatically so operator smoke checks do not replay the same message tuple.</div>
           <form id="injectForm">
-            <textarea name="text" rows="4" placeholder="LONG BTCUSDT now"></textarea>
+            <textarea name="text" rows="4" placeholder="${esc(demoSignalText)}">${esc(demoSignalText)}</textarea>
             <div class="grid2">
-              <input name="chat_id" value="-1000000000000" placeholder="chat id">
-              <input name="message_id" type="number" min="1" value="1001">
+              <input name="chat_id" value="__DEMO_SIGNAL_CHAT_ID__" placeholder="chat id">
+              <input name="message_id" type="number" min="1" value="${esc(nextDemoSignalMessageId)}">
             </div>
             <div class="grid2">
               <select name="event_type">
@@ -291,24 +311,30 @@ HTML = """<!doctype html>
         <section class="card"><h2>Health</h2><pre>${health}</pre></section>`;
       bindForms();
     }
-    async function load(){ render(await api('/api/state')); }
+    async function load(){
+      const requestId = ++latestLoadRequestId;
+      const data = await api('/api/state');
+      if (!data || requestId !== latestLoadRequestId) return;
+      render(data);
+    }
     function setChannelForm(channel){
       const form = document.getElementById('channelForm');
       if (!form) return;
-      form.elements.id.value = channel?.id || '';
-      form.elements.name.value = channel?.name || '';
-      form.elements.source_type.value = channel?.source_type || 'bot_api';
-      form.elements.chat_id.value = channel?.chat_id || '';
-      form.elements.channel_username.value = channel?.channel_username || '';
-      form.elements.enabled.value = String(channel?.enabled ?? true);
-      form.elements.reconcile_interval_seconds.value = channel?.reconcile_interval_seconds || 30;
-      form.elements.dedup_window_seconds.value = channel?.dedup_window_seconds || 3600;
-      form.elements.notes.value = channel?.notes || '';
+      form.elements.id.value = channel && channel.id ? channel.id : '';
+      form.elements.name.value = channel && channel.name ? channel.name : '';
+      form.elements.source_type.value = channel && channel.source_type ? channel.source_type : 'public_web';
+      form.elements.chat_id.value = channel && channel.chat_id ? channel.chat_id : '';
+      form.elements.channel_username.value = channel && channel.channel_username ? channel.channel_username : '';
+      form.elements.enabled.value = String(channel && channel.enabled !== undefined ? channel.enabled : true);
+      form.elements.reconcile_interval_seconds.value = channel && channel.reconcile_interval_seconds ? channel.reconcile_interval_seconds : 30;
+      form.elements.dedup_window_seconds.value = channel && channel.dedup_window_seconds ? channel.dedup_window_seconds : 3600;
+      form.elements.notes.value = channel && channel.notes ? channel.notes : '';
       const submit = document.getElementById('channelSubmitButton');
       if (submit) submit.textContent = channel ? 'Update Channel' : 'Save Channel';
     }
     function bindForms(){
-      document.getElementById('modeForm')?.addEventListener('submit', async e => {
+      const modeForm = document.getElementById('modeForm');
+      if (modeForm) modeForm.addEventListener('submit', async e => {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
@@ -318,12 +344,13 @@ HTML = """<!doctype html>
             default_leverage:Number(f.get('default_leverage')),
             paused:f.get('paused') === 'true'
           }})});
-          load();
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('riskForm')?.addEventListener('submit', async e => {
+      const riskForm = document.getElementById('riskForm');
+      if (riskForm) riskForm.addEventListener('submit', async e => {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
@@ -333,12 +360,13 @@ HTML = """<!doctype html>
             global_stop_loss_ratio:Number(f.get('global_stop_loss_ratio')),
             readonly_close_only:f.get('readonly_close_only') === 'true'
           }})});
-          load();
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('aiForm')?.addEventListener('submit', async e => {
+      const aiForm = document.getElementById('aiForm');
+      if (aiForm) aiForm.addEventListener('submit', async e => {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
@@ -349,12 +377,13 @@ HTML = """<!doctype html>
             timeout_seconds:Number(f.get('timeout_seconds')),
             system_prompt:String(f.get('system_prompt'))
           }})});
-          load();
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('telegramForm')?.addEventListener('submit', async e => {
+      const telegramForm = document.getElementById('telegramForm');
+      if (telegramForm) telegramForm.addEventListener('submit', async e => {
         e.preventDefault();
         const f = new FormData(e.target);
         const telegramPatch = {
@@ -372,12 +401,13 @@ HTML = """<!doctype html>
         }
         try {
           await api('/api/config', {method:'POST', body: JSON.stringify({telegram:telegramPatch})});
-          load();
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('channelForm')?.addEventListener('submit', async e => {
+      const channelForm = document.getElementById('channelForm');
+      if (channelForm) channelForm.addEventListener('submit', async e => {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
@@ -394,7 +424,7 @@ HTML = """<!doctype html>
           })});
           e.target.reset();
           setChannelForm(null);
-          load();
+          await load();
         } catch (err) {
           alert(err.message);
         }
@@ -411,17 +441,18 @@ HTML = """<!doctype html>
               return;
             }
             if (action === 'toggle') {
-              await api('/api/channels/toggle', {method:'POST', body: JSON.stringify({channel_id: channelId, enabled: !(channel?.enabled)})});
+              await api('/api/channels/toggle', {method:'POST', body: JSON.stringify({channel_id: channelId, enabled: !(channel && channel.enabled)})});
             } else if (action === 'remove') {
               await api('/api/channels/remove', {method:'POST', body: JSON.stringify({channel_id: channelId})});
             }
-            load();
+            await load();
           } catch (err) {
             alert(err.message);
           }
         });
       });
-      document.getElementById('injectForm')?.addEventListener('submit', async e => {
+      const injectForm = document.getElementById('injectForm');
+      if (injectForm) injectForm.addEventListener('submit', async e => {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
@@ -433,71 +464,78 @@ HTML = """<!doctype html>
             version:f.get('version') ? Number(f.get('version')) : null,
             use_configured_okx_path:String(f.get('execution_path')) === 'configured'
           })});
-          load();
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('operatorCommandForm')?.addEventListener('submit', async e => {
+      const operatorCommandForm = document.getElementById('operatorCommandForm');
+      if (operatorCommandForm) operatorCommandForm.addEventListener('submit', async e => {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
           const result = await api('/api/actions/operator-command', {method:'POST', body: JSON.stringify({text:String(f.get('text'))})});
           alert(result.reply || result.status || 'ok');
-          load();
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('closeAllButton')?.addEventListener('click', async () => {
+      const closeAllButton = document.getElementById('closeAllButton');
+      if (closeAllButton) closeAllButton.addEventListener('click', async () => {
         try {
           await api('/api/positions/close', {method:'POST', body: JSON.stringify({})});
-          load();
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('pauseButton')?.addEventListener('click', async () => {
+      const pauseButton = document.getElementById('pauseButton');
+      if (pauseButton) pauseButton.addEventListener('click', async () => {
         try {
-          await api('/api/actions/pause', {method:'POST', body: JSON.stringify({reason:'Manual pause from Web UI'})});
-          load();
+          await api('/api/actions/pause', {method:'POST', body: JSON.stringify({reason:'Web UI 手动暂停'})});
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('resumeButton')?.addEventListener('click', async () => {
+      const resumeButton = document.getElementById('resumeButton');
+      if (resumeButton) resumeButton.addEventListener('click', async () => {
         try {
-          await api('/api/actions/resume', {method:'POST', body: JSON.stringify({reason:'Manual resume from Web UI'})});
-          load();
+          await api('/api/actions/resume', {method:'POST', body: JSON.stringify({reason:'Web UI 手动恢复'})});
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('reconcileButton')?.addEventListener('click', async () => {
+      const reconcileButton = document.getElementById('reconcileButton');
+      if (reconcileButton) reconcileButton.addEventListener('click', async () => {
         try {
           const result = await api('/api/actions/reconcile', {method:'POST', body: JSON.stringify({})});
           alert(result.detail);
-          load();
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('topicTestButton')?.addEventListener('click', async () => {
+      const topicTestButton = document.getElementById('topicTestButton');
+      if (topicTestButton) topicTestButton.addEventListener('click', async () => {
         try {
           const result = await api('/api/actions/topic-test', {method:'POST', body: JSON.stringify({})});
           const detail = result.reason || result.stderr || result.target_link || result.target || '';
-          alert(result.sent ? ('Topic smoke succeeded: ' + detail) : ('Topic smoke ' + (result.status || 'failed') + ': ' + detail));
-          load();
+          alert(result.sent ? ('话题发送自检成功: ' + detail) : ('话题发送自检' + (result.status || 'failed') + ': ' + detail));
+          await load();
         } catch (err) {
           alert(err.message);
         }
       });
-      document.getElementById('resetLocalStateButton')?.addEventListener('click', async () => {
+      const resetLocalStateButton = document.getElementById('resetLocalStateButton');
+      if (resetLocalStateButton) resetLocalStateButton.addEventListener('click', async () => {
         if (!confirm('Reset local runtime state? This only clears local DB/log/session state and does not touch any external OKX demo position.')) return;
         try {
           const result = await api('/api/actions/reset-local-state', {method:'POST', body: JSON.stringify({})});
           alert(result.detail);
-          load();
+          await load();
         } catch (err) {
           alert(err.message);
         }
@@ -506,7 +544,7 @@ HTML = """<!doctype html>
         button.addEventListener('click', async e => {
           try {
             await api('/api/positions/close', {method:'POST', body: JSON.stringify({symbol: e.currentTarget.dataset.closeSymbol})});
-            load();
+            await load();
           } catch (err) {
             alert(err.message);
           }
@@ -517,6 +555,12 @@ HTML = """<!doctype html>
     setInterval(load, 5000);
   </script>
 </body></html>"""
+
+HTML = (
+    HTML.replace("__DEMO_SIGNAL_TEXT__", json.dumps(DEFAULT_DEMO_SIGNAL_TEXT))
+    .replace("__DEMO_SIGNAL_CHAT_ID__", DEFAULT_DEMO_SIGNAL_CHAT_ID)
+    .replace("__DEMO_SIGNAL_MESSAGE_ID__", str(DEFAULT_DEMO_SIGNAL_MESSAGE_ID))
+)
 
 
 LOGIN_HTML = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -648,14 +692,14 @@ class WebController:
                 payload = _decode_json_body(body)
             except ValueError as exc:
                 return HTTPStatus.BAD_REQUEST, {}, {"error": str(exc)}
-            self.runtime.pause_trading(str(payload.get("reason", "Manual pause from Web UI")))
+            self.runtime.pause_trading(str(payload.get("reason", "Web UI 手动暂停")))
             return HTTPStatus.OK, {}, self.runtime.public_snapshot()["operator_state"]
         if path == "/api/actions/resume":
             try:
                 payload = _decode_json_body(body)
             except ValueError as exc:
                 return HTTPStatus.BAD_REQUEST, {}, {"error": str(exc)}
-            self.runtime.resume_trading(str(payload.get("reason", "Manual resume from Web UI")))
+            self.runtime.resume_trading(str(payload.get("reason", "Web UI 手动恢复")))
             return HTTPStatus.OK, {}, self.runtime.public_snapshot()["operator_state"]
         if path == "/api/actions/reconcile":
             return HTTPStatus.CREATED, {}, self.runtime.reconcile_now()

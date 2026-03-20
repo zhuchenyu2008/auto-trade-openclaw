@@ -42,7 +42,8 @@ The repo is only acceptable as a directly usable demo-only release when all item
    - one successful outbound topic smoke
    - one successful OKX demo open
    - one successful OKX demo reverse or close
-6. Demo-only guard remains locked and no live path is enabled anywhere in config validation, readiness output, or acceptance evidence.
+6. Topic logs and small Claw operator-facing outputs are Chinese for the intended operator workflows.
+7. Demo-only guard remains locked and no live path is enabled anywhere in config validation, readiness output, or acceptance evidence.
 
 ### 3.2 Required Command Set At Gate Time
 
@@ -74,6 +75,7 @@ The acceptance package must include:
 - per-fixture summary report
 - screenshots or exported JSON from Web state only if they add evidence not already present in runtime artifacts
 - credentialed demo evidence showing topic target used, public channel checked, and OKX demo order ids
+- when browser evidence is collected, the run should follow the memory-safe Agent Browser rule: single instance preferred, low tab count, low concurrency, and immediate cleanup after each check
 
 Recommended repo-side capture sequence before the credentialed run:
 

@@ -25,7 +25,6 @@ Before the main session starts `M3`, confirm all of the following:
 - outbound network is allowed in the operator-owned environment
 - OpenClaw CLI is reachable for `ai.provider="openclaw"`
 - OKX demo credentials are available through env or local `.env`
-- if inbound operator-topic commands are part of the acceptance run, the Telegram bot token is available and the bot can receive topic messages
 - if outbound topic smoke is part of the acceptance run, the configured operator topic target is reachable from the local OpenClaw send path
 - at least one enabled `public_web` source channel is configured and points at a real public Telegram channel page
 

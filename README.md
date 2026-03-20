@@ -15,15 +15,15 @@ This build is intentionally scoped for direct use in this environment:
 
 ## What is implemented
 
-- Telegram Bot API watcher with new/edit event handling and reconciliation hook
-- delete/revoke handling is not implemented in this dependency-light Bot API build; `listen_deletes` remains a stored config flag only
+- public Telegram webpage polling through `public_web` with new/edit detection and reconciliation hook
+- delete/revoke handling is not implemented in this dependency-light build; `listen_deletes` remains a stored config flag only
 - message normalization, versioning, idempotency, AI parsing, risk checks, execution pipeline
 - OpenClaw CLI adapter using the local default model path, with heuristic fallback
 - OKX execution gateway:
   - simulated demo engine for safe local operation
   - real OKX REST demo request path available when credentials are configured
 - topic logger via `openclaw message send`
-- operator topic command handling for `/help`, `/status`, `/readiness`, `/paths`, `/channels`, `/signals`, `/risk`, `/positions`, `/orders`, `/pause`, `/resume`, `/reconcile`, `/close`, and `/topic-test` when the bot can receive topic messages
+- local/Web small Claw operator command handling for `/help`, `/status`, `/readiness`, `/paths`, `/channels`, `/signals`, `/risk`, `/positions`, `/orders`, `/pause`, `/resume`, `/reconcile`, `/close`, and `/topic-test`
 - SQLite persistence for channels, messages, AI decisions, risk checks, orders, positions, logs, audit logs, sessions
 - authenticated web UI with 6-digit PIN, dashboard, AI config controls, trading controls, risk controls, channel management, logs, orders, positions, health
 - direct-use summary exposed consistently in CLI, runtime artifacts, and the Web dashboard
@@ -119,7 +119,7 @@ This local demo config is prewired for:
 - operator topic link `https://t.me/c/3720752566/2080`
 - demo-only trading guardrails
 
-This local demo profile is ready for Web control, config persistence, runtime artifacts, manual demo injection, and the configured OKX demo REST path. Automatic source-channel ingestion can now run either through a Telegram bot token + enabled `bot_api` source channel, or through an enabled public-channel webpage source using `source_type="public_web"` with `channel_username` set to a public Telegram channel.
+This local demo profile is ready for Web control, config persistence, runtime artifacts, manual demo injection, the configured OKX demo REST path, and public Telegram source ingestion through enabled `public_web` channels.
 
 The bundled local Web PIN is `123456`.
 
@@ -145,11 +145,11 @@ An editable install is optional, not required.
    - or export `TG_OKX_WEB_PIN=123456`
    - or set `web.pin_hash` to a SHA256 hash of the PIN
 2. Add Telegram channels under `telegram.channels`.
-3. For `bot_api` polling, set `telegram.bot_token` or export `TG_OKX_TELEGRAM_BOT_TOKEN`. For public-channel webpage polling, configure an enabled `telegram.channels[]` entry with `source_type="public_web"` and `channel_username` pointing at a public channel like `https://t.me/s/lbeobhpreo`.
+3. Configure an enabled `telegram.channels[]` entry with `source_type="public_web"` and `channel_username` pointing at a public channel like `https://t.me/s/lbeobhpreo`.
 4. Leave `okx.enabled=false` unless you explicitly want the real OKX demo REST path.
 5. Optionally set `telegram.report_topic` to a Telegram topic target like `-1001234567890:topic:123`. `telegram.operator_target` remains supported and overrides `report_topic` if both are set.
 The Web/config path also accepts topic links like `https://t.me/c/3720752566/2080` and normalizes them to the internal target form.
-The Telegram wiring form also shows whether the current bot token came from config or env, and it can explicitly clear a stored config token without touching env-based secrets.
+The Telegram wiring form is now public_web-first. Legacy bot token fields are still available in a compatibility section when needed, without changing env-based secrets.
 6. If `ai.provider="openclaw"`, you can route this project through a dedicated OpenClaw agent by setting `ai.openclaw_agent_id` (for example `tgokxai`). This lets the project use a separate model/provider path from the main assistant session.
 7. Keep `trading.position_mode="net"` in this build.
 
@@ -157,42 +157,15 @@ When the HTTP server is already running, changing `web.host` or `web.port` updat
 
 For a real Telegram + OKX demo wiring path, the minimum config is:
 
-- either:
-  - `telegram.bot_token` set (or `TG_OKX_TELEGRAM_BOT_TOKEN` exported) plus at least one enabled `telegram.channels[]` entry with `source_type="bot_api"`, or
-  - at least one enabled `telegram.channels[]` entry with `source_type="public_web"` and `channel_username` pointing at a public Telegram channel page such as `https://t.me/s/lbeobhpreo`
+- at least one enabled `telegram.channels[]` entry with `source_type="public_web"` and `channel_username` pointing at a public Telegram channel page such as `https://t.me/s/lbeobhpreo`
 - `okx.enabled=true`
 - `okx.use_demo=true`
 - `okx.api_key`, `okx.api_secret`, `okx.passphrase` set for OKX demo, or the env trio `TG_OKX_OKX_API_KEY`, `TG_OKX_OKX_API_SECRET`, `TG_OKX_OKX_PASSPHRASE`
 
-`verify` will warn when `mtproto` channels are configured, because this dependency-light build only actively consumes the Bot API watcher path and the public Telegram webpage watcher path.
+`verify` will warn when `mtproto` channels are configured, because this dependency-light build only actively supports the `public_web` watcher path in the intended operator scope.
 
-The runtime auto-loads a local `.env` next to the config file and the repository-root `.env` as fallback. Existing shell environment variables still win. Local `.env` changes are watched alongside `config.json`, so newly added demo bot tokens or OKX demo credentials can be picked up without persisting them into the config file.
+The runtime auto-loads a local `.env` next to the config file and the repository-root `.env` as fallback. Existing shell environment variables still win. Local `.env` changes are watched alongside `config.json`, so newly added OKX demo credentials can be picked up without persisting them into the config file.
 An example variable layout is included in `.env.example`.
-
-Example `bot_api` channel entry:
-
-```json
-{
-  "id": "vip-btc",
-  "name": "VIP BTC",
-  "source_type": "bot_api",
-  "chat_id": "-1001234567890",
-  "channel_username": "",
-  "enabled": true,
-  "priority": 100,
-  "parse_profile_id": "default",
-  "strategy_profile_id": "default",
-  "risk_profile_id": "default",
-  "paper_trading_enabled": true,
-  "live_trading_enabled": false,
-  "listen_new_messages": true,
-  "listen_edits": true,
-  "listen_deletes": false,
-  "reconcile_interval_seconds": 30,
-  "dedup_window_seconds": 3600,
-  "notes": ""
-}
-```
 
 Example `public_web` channel entry:
 
@@ -262,19 +235,19 @@ Sensitive fields such as bot tokens, OKX credentials, web PIN hashes, and sessio
 It also reports the normalized operator topic link and a `remaining_gaps` list so you can see, in one place, what is still blocking end-to-end automatic use.
 The capability table now includes `current_operating_profile`, which distinguishes "manual/demo direct use is ready" from "full automatic Telegram ingestion is ready".
 `verify`, the Web dashboard, and the runtime artifacts also expose an `activation_summary` matrix so you can inspect manual demo, automatic Telegram ingestion, operator-topic outbound/inbound, configured OKX demo, and the demo-only safety lock as separate paths instead of one collapsed status.
-`paths` and the Web dashboard now also expose an `activation_checklist` plus placeholder-safe `setup_examples` snippets so the next config edit for operator-topic wiring, source channels, and OKX demo stays explicit.
+`paths` and the Web dashboard now also expose an `activation_checklist` plus placeholder-safe `setup_examples` snippets so the next config edit for operator-topic wiring, `public_web` source channels, and OKX demo stays explicit.
 `paths` now includes the repository root hint, absolute smoke-script commands, and browser-free `curl` commands for `/login`, `/healthz`, and `/readyz`, so you can execute the direct-use flow even when you are not already sitting in the repo root.
 The runtime also writes redacted copies of this information into `runtime/.../direct-use.json`, `runtime/.../direct-use.txt`, and `runtime/.../public-state.json` so you can inspect the effective wiring without opening the Web UI.
 `direct-use.txt` is the shortest human-readable summary for terminal-first operation; the JSON files keep the structured detail for scripts and review.
 Those outputs now also expose `topic_delivery_state`, `topic_delivery_detail`, and `topic_delivery_verified`, so "topic target configured" and "topic smoke already succeeded in this runtime" are visible as different states in CLI/Web/runtime artifacts.
 Those runtime artifacts now also carry `verification_status` plus the same actionable `next_steps` list exposed by `verify`, so the file-based/demo path stays directly operable without switching back to the CLI.
-For terminal-first setup, you can wire the operator topic and Telegram source channels without editing JSON manually:
+For terminal-first setup, you can wire the operator topic and `public_web` source channels without editing JSON manually:
 
 ```bash
 python3 -m tg_okx_auto_trade.main set-topic-target --config config.demo.local.json --target https://t.me/c/3720752566/2080
-python3 -m tg_okx_auto_trade.main upsert-channel --config config.demo.local.json --name "VIP BTC" --chat-id -1001234567890
-python3 -m tg_okx_auto_trade.main set-channel-enabled --config config.demo.local.json --channel-id vip_btc --disabled
-python3 -m tg_okx_auto_trade.main remove-channel --config config.demo.local.json --channel-id vip_btc
+python3 -m tg_okx_auto_trade.main upsert-channel --config config.demo.local.json --name "VIP Public" --source-type public_web --channel-username https://t.me/s/lbeobhpreo
+python3 -m tg_okx_auto_trade.main set-channel-enabled --config config.demo.local.json --channel-id vip_public --disabled
+python3 -m tg_okx_auto_trade.main remove-channel --config config.demo.local.json --channel-id vip_public
 ```
 
 When no channel exists yet, `paths` now prints `set-channel-enabled` and `remove-channel` helpers with a `<channel-id-from-upsert-channel>` placeholder instead of a misleading fake id.
@@ -298,7 +271,7 @@ When no channel exists yet, `paths` now prints `set-channel-enabled` and `remove
 - Web runtime controls:
   - AI config: provider, model, thinking level, timeout, system prompt
   - trading mode, pause/resume, leverage, TP/SL, close-only
-  - Telegram wiring: bot token, report topic/operator target, operator thread, poll interval
+  - Telegram wiring: public_web-first channel setup, report topic/operator target, operator thread, poll interval
   - channel add, edit, enable/disable, remove with config write-back
   - demo signal injection from the browser with explicit simulated/configured path selection
   - reconcile-now, topic smoke, reset-local-state, and operator-command dry runs
@@ -370,7 +343,7 @@ Offline end-to-end smoke:
 python3 scripts/smoke_e2e.py --config config.demo.local.json
 ```
 
-This runs a local end-to-end demo-only flow: simulated Telegram Bot API update -> runtime pipeline -> authenticated Web state check -> operator command -> manual close.
+This runs a local end-to-end demo-only flow: simulated Telegram update -> runtime pipeline -> authenticated Web state check -> operator command -> manual close.
 
 HTTP server smoke:
 
@@ -428,10 +401,10 @@ If the current environment blocks external network access, the OKX demo smoke an
 - Real OKX demo REST execution now pre-sets the configured leverage per instrument before submitting the order, which improves first-run demo usability.
 - Manual CLI/Web signal injection is safe-by-default: it stays on the simulated engine unless you explicitly opt into the configured OKX demo REST path.
 - Topic logging is implemented through OpenClaw Telegram send commands. Configure `telegram.report_topic` or `telegram.operator_target`, and optionally `telegram.operator_thread_id`.
-- Operator topic integration now supports outbound logging plus inbound `/status`, `/readiness`, `/paths`, `/channels`, `/signals`, `/risk`, `/positions`, `/orders`, `/pause`, `/resume`, `/reconcile`, `/close`, and `/topic-test` commands when the configured Telegram bot can receive topic messages. This remains partial until the bot is actually wired into the operator topic chat.
+- The intended operator surface is outbound topic logging plus Web/local small Claw commands. Legacy inbound Telegram bot commands may still exist internally, but they are no longer treated as a planned/supported mainline capability.
 - The Web UI now exposes direct-use controls for Telegram wiring, channel lifecycle, demo signal injection, pause/resume/reconcile actions, and recent message/AI inspection.
 - Local smoke endpoints are available at `/healthz` and `/readyz` without login for quick verification.
-- Telegram `mtproto` channel records are accepted in config but not actively consumed in this zero-dependency build. Bot API is the implemented live watcher path.
+- Telegram `mtproto` channel records are accepted in config but not actively consumed in this zero-dependency build. The intended live watcher path is `public_web`.
 - OKX private WebSocket reconciliation is not active in this dependency-light version; simulated execution state is reconciled internally, and a real REST demo submission path is included for credentialed use.
 - Simulated execution now covers `reverse_to_long`, `reverse_to_short`, `cancel_orders`, and `update_protection` in addition to open/add/reduce/close flows.
 
@@ -443,7 +416,7 @@ Satisfied directly:
 - runnable app
 - `config.example.json` and local config loader
 - web UI on port `6010`
-- Telegram watcher pipeline for Bot API
+- Telegram watcher pipeline for public Telegram webpages
 - OpenClaw orchestration path with fallback
 - OKX demo execution path
 - topic logger support
@@ -454,4 +427,4 @@ Known gaps:
 
 - MTProto/Telethon watcher is not implemented because the build avoids external packages
 - OKX private WebSocket sync is not implemented; the real REST demo path exists, and the simulated engine maintains local execution/position state
-- Inbound operator-topic commands are implemented, but they remain partial until the configured Telegram bot is actually present in the operator topic chat and allowed to receive topic messages
+- Legacy inbound operator-topic bot commands may still exist internally, but they are outside the intended supported operator scope

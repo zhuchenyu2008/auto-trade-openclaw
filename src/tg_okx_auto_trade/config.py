@@ -24,7 +24,7 @@ _MANAGED_ENV_VALUES: dict[str, str] = {}
 class ChannelConfig:
     id: str
     name: str
-    source_type: str = "bot_api"
+    source_type: str = "public_web"
     chat_id: str = ""
     channel_username: str = ""
     enabled: bool = True

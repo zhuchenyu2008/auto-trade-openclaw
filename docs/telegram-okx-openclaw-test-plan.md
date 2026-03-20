@@ -27,7 +27,7 @@ What the code currently supports for the scoped system:
 - demo-only trading guardrails in config validation and risk checks
 - simulated OKX execution plus a credentialed OKX demo REST path
 - topic logging through `openclaw message send`
-- operator commands for `/help`, `/status`, `/readiness`, `/paths`, `/channels`, `/signals`, `/risk`, `/positions`, `/orders`, `/pause`, `/resume`, `/reconcile`, `/close`, and `/topic-test`
+- small Claw operator commands for `/help`, `/status`, `/readiness`, `/paths`, `/channels`, `/signals`, `/risk`, `/positions`, `/orders`, `/pause`, `/resume`, `/reconcile`, `/close`, and `/topic-test`
 - authenticated Web control panel with login, config edits, channel management, manual inject, reconcile, topic smoke, close, and reset-local-state actions
 
 Known implementation limits that must remain visible in testing docs:
@@ -37,7 +37,7 @@ Known implementation limits that must remain visible in testing docs:
 - OKX private WebSocket reconciliation is not implemented
 - configured OKX demo REST coverage is partial: `update_protection`, ratio-based global TP/SL, and trailing protection remain simulated-only
 - `public_web` edit detection is best-effort; there is no authoritative Telegram edit event stream on that path
-- Bot API surfaces exist in repo tests and scripts, but they are not the primary M0 scope
+- Bot API surfaces still exist in repo tests and internal compatibility code, but they are not part of the intended supported scope
 
 ## 3. Scope
 
@@ -49,7 +49,7 @@ Known implementation limits that must remain visible in testing docs:
 | AI path | independent OpenClaw agent configuration, wrapper behavior, fallback visibility, parser output contract |
 | Execution | demo-only simulated path and credentialed OKX demo REST path |
 | Risk/runtime | contracts-only validation, default leverage 20x, close-only mode, auto-pause on execution failure, global TP/SL default-off behavior |
-| Operator surface | topic target normalization, outbound topic smoke, inbound operator command handling when bot/topic wiring exists |
+| Operator surface | topic target normalization, outbound topic smoke, Web/local small Claw commands, legacy inbound bot path explicitly out of intended scope |
 | Web | login, state view, config mutation, channel lifecycle, runtime actions, manual close, reset-local-state |
 | Recovery | config hot reload, local `.env` hot reload, restore simulated positions, reconciliation status reporting, runtime artifact generation |
 
@@ -156,12 +156,14 @@ Entry:
 
 - topic target normalization rules frozen
 - operator command list frozen
+- expected operator-facing language is Chinese
 
 Exit:
 
 - outbound topic smoke passes in credentialed env
-- inbound command path is verified only when bot token plus topic wiring exist
-- docs do not treat inbound operator commands as ready without bot/topic wiring
+- inbound bot command path is legacy/internal only and not part of the intended supported operator scope
+- docs do not treat inbound operator commands as a required readiness target
+- topic logs and small Claw operator replies are verified in Chinese for the intended operator-facing flows
 
 ### 7.5 Web
 
@@ -169,11 +171,13 @@ Entry:
 
 - six-digit PIN auth path defined
 - required runtime actions enumerated
+- browser-level validation plan respects server memory limits
 
 Exit:
 
 - login, `/api/state`, config mutation, channel lifecycle, inject, reconcile, topic-test, close, and reset-local-state have repo-local coverage
 - any feature not present in current UI or endpoints is not claimed
+- browser-level checks are executed with memory-safe discipline: single browser instance preferred, low tab count, low concurrency, and immediate browser cleanup after each check
 
 ## 8. Evidence Rules
 

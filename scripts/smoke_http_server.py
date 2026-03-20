@@ -119,7 +119,7 @@ def main() -> int:
                 opener,
                 f"{base_url}/api/inject-message",
                 data={
-                    "text": "LONG BTCUSDT SIZE 1",
+                    "text": "LONG ADAUSDT $1",
                     "chat_id": "-1000000000000",
                     "message_id": 7001,
                     "event_type": "new",

@@ -47,7 +47,7 @@ class TelegramWatcher:
                 if channel.enabled and channel.source_type == "public_web"
             ]
             if not token and not enabled_public_web_channels:
-                self._publish_health("idle", "telegram.bot_token not configured")
+                self._publish_health("idle", "No enabled public_web channels configured")
                 time.sleep(config.telegram.poll_interval_seconds)
                 continue
             try:
@@ -59,12 +59,7 @@ class TelegramWatcher:
                     self._poll_public_web_channels(enabled_public_web_channels, callback)
                 detail_parts: list[str] = []
                 if enabled_bot_channels:
-                    if token:
-                        detail_parts.append(f"{len(enabled_bot_channels)} enabled bot_api channel(s)")
-                    else:
-                        detail_parts.append(
-                            f"{len(enabled_bot_channels)} enabled bot_api channel(s), waiting for bot token"
-                        )
+                    detail_parts.append(f"{len(enabled_bot_channels)} legacy bot_api channel(s)")
                 if enabled_public_web_channels:
                     detail_parts.append(f"{len(enabled_public_web_channels)} enabled public_web channel(s)")
                 self._publish_health(

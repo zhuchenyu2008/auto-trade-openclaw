@@ -125,7 +125,9 @@ class OKXGateway:
                 payload, exchange_order_id, attached_algo_orders = self._execute_real_demo_reverse(intent)
             else:
                 if intent.action == "close_all":
-                    self.sync_real_demo_position(intent.symbol)
+                    skipped = self._execute_real_demo_close_all_noop(intent)
+                    if skipped is not None:
+                        return skipped
                 else:
                     self._ensure_real_demo_leverage(intent)
                 body = self._build_real_order_body(intent)
@@ -147,6 +149,45 @@ class OKXGateway:
                 "attached_algo_orders": attached_algo_orders,
             },
             position_snapshot=position_snapshot,
+        )
+
+    def _execute_real_demo_close_all_noop(self, intent: TradingIntent) -> ExecutionResult | None:
+        try:
+            self.sync_real_demo_position(intent.symbol)
+        except Exception as exc:
+            if not _is_okx_missing_instrument_error(str(exc)):
+                raise
+            return ExecutionResult(
+                status="skipped",
+                exchange_order_id="",
+                payload={
+                    "environment": "real_demo_rest",
+                    "execution_path": "real_demo_rest",
+                    "action": intent.action,
+                    "instId": intent.symbol,
+                    "status": "skipped",
+                    "reason": "close_all skipped because OKX does not recognize the instrument id",
+                    "detail": str(exc),
+                },
+                position_snapshot=None,
+            )
+        current = self._demo_positions.get(intent.symbol)
+        _side, qty = self._close_order_params(current)
+        if qty > 0:
+            return None
+        return ExecutionResult(
+            status="skipped",
+            exchange_order_id="",
+            payload={
+                "environment": "real_demo_rest",
+                "execution_path": "real_demo_rest",
+                "action": intent.action,
+                "instId": intent.symbol,
+                "status": "skipped",
+                "reason": "close_all skipped because no open quantity is available",
+                "detail": f"No open quantity available for {intent.action} on {intent.symbol}",
+            },
+            position_snapshot=current.copy() if isinstance(current, dict) else None,
         )
 
     def _ensure_real_demo_leverage(self, intent: TradingIntent) -> None:
@@ -691,3 +732,8 @@ def _is_okx_environment_mismatch(*, response_body: str = "", payload: dict[str, 
     payload_text = json.dumps(payload, sort_keys=True) if payload else ""
     combined = f"{response_text} {payload_text}"
     return "50101" in combined or "APIKey does not match current environment." in combined
+
+
+def _is_okx_missing_instrument_error(detail: str) -> bool:
+    normalized = str(detail or "").lower()
+    return "instrument id" in normalized and "doesn't exist" in normalized

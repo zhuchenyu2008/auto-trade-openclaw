@@ -4,12 +4,13 @@ This repository did not have a repo-local testing doc set before M0. These files
 
 Read them in this order:
 
-1. `docs/telegram-okx-openclaw-test-plan.md`
-2. `docs/telegram-okx-openclaw-test-cases.md`
-3. `docs/telegram-okx-openclaw-fixture-spec.md`
-4. `docs/telegram-okx-openclaw-coverage-matrix.md`
-5. `docs/telegram-okx-openclaw-final-test-plan.md`
-6. `docs/telegram-okx-openclaw-m3-acceptance-runbook.md` for the operator-owned credentialed demo handoff
+1. `docs/telegram-okx-openclaw-milestones.md` for the original operator-approved `M0`–`M5` milestone contract and current status
+2. `docs/telegram-okx-openclaw-test-plan.md`
+3. `docs/telegram-okx-openclaw-test-cases.md`
+4. `docs/telegram-okx-openclaw-fixture-spec.md`
+5. `docs/telegram-okx-openclaw-coverage-matrix.md`
+6. `docs/telegram-okx-openclaw-final-test-plan.md`
+7. `docs/telegram-okx-openclaw-m3-acceptance-runbook.md` for the operator-owned credentialed demo handoff
 
 Current repo-local execution assets:
 

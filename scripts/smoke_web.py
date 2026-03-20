@@ -127,7 +127,7 @@ def main() -> int:
                 "/api/inject-message",
                 body=json.dumps(
                     {
-                        "text": "LONG BTCUSDT now",
+                        "text": "LONG ADAUSDT $1",
                         "chat_id": "-1000000000000",
                         "message_id": 9001,
                         "event_type": "new",

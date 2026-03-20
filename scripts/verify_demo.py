@@ -136,7 +136,7 @@ def main() -> int:
             "--message-id",
             "101",
             "--text",
-            "LONG BTCUSDT now",
+            "LONG ADAUSDT $1",
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
         if result.returncode != 0:

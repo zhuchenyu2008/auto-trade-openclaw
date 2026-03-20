@@ -149,13 +149,11 @@ def _build_payload(
         "This prep script does not validate M3 and does not perform any outbound Telegram or OKX action.",
         "Do not count `inject-message` as evidence of `public_web` ingestion.",
         "Do not claim configured-path support for `update_protection`, trailing protection, or ratio-based global TP/SL on OKX demo.",
-        "Do not claim inbound operator-topic commands unless a real bot token is configured and the bot can receive topic messages.",
+        "Do not treat inbound operator-topic bot commands as part of the intended supported acceptance scope; the supported operator path is public_web ingestion plus outbound topic logs and Web/local controls.",
     ]
     ambiguity_flags = []
     if not enabled_public_web_channels:
         ambiguity_flags.append("No enabled public_web channels are configured.")
-    if secret_status.get("telegram_bot_token_configured") is not True:
-        ambiguity_flags.append("Telegram bot token is not currently configured, so inbound operator-topic commands remain unavailable.")
     if secret_status.get("okx_demo_credentials_configured") is not True:
         ambiguity_flags.append("OKX demo credentials are not currently configured in env or local config.")
     if activation_summary.get("operator_topic_outbound", {}).get("status") != "ready":
