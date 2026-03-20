@@ -938,7 +938,90 @@ class AppTests(unittest.TestCase):
         self.assertEqual(snapshot["orders"][0]["payload"]["execution_path"], "real_demo_rest")
         self.assertEqual(len(snapshot["orders"][0]["payload"]["steps"]), 2)
         self.assertEqual(snapshot["positions"][0]["payload"]["side"], "long")
-        self.assertEqual(snapshot["positions"][0]["payload"]["qty"], 3.0)
+
+    def test_public_web_openclaw_close_all_syncs_exchange_position_before_real_demo_close(self):
+        self.runtime.update_config(
+            {
+                "ai": {"provider": "openclaw", "openclaw_agent_id": "tgokxai"},
+                "okx": {
+                    "enabled": True,
+                    "api_key": "api-key",
+                    "api_secret": "api-secret",
+                    "passphrase": "passphrase",
+                },
+            }
+        )
+        requests: list[tuple[str, str, dict[str, object] | None]] = []
+
+        def fake_request(method, path, body=None):
+            requests.append((method, path, body))
+            if method == "GET" and path == "/api/v5/account/positions?instId=BTC-USDT-SWAP":
+                return {
+                    "code": "0",
+                    "msg": "",
+                    "data": [
+                        {
+                            "instId": "BTC-USDT-SWAP",
+                            "pos": "3",
+                            "posSide": "net",
+                            "mgnMode": "isolated",
+                            "lever": "20",
+                            "avgPx": "100",
+                            "upl": "0",
+                        }
+                    ],
+                }
+            if method == "POST" and path == "/api/v5/trade/order":
+                return {"code": "0", "msg": "", "data": [{"ordId": "close-12345", "sCode": "0", "sMsg": ""}]}
+            raise AssertionError(f"unexpected OKX request: {(method, path, body)}")
+
+        openclaw_reply = json.dumps(
+            {
+                "executable": True,
+                "action": "close",
+                "symbol": "BTC-USDT-SWAP",
+                "market_type": "swap",
+                "side": None,
+                "entry_type": "market",
+                "size_mode": None,
+                "size_value": None,
+                "leverage": 20,
+                "margin_mode": "isolated",
+                "risk_level": "medium",
+                "tp": [],
+                "sl": None,
+                "trailing": None,
+                "require_manual_confirmation": False,
+                "confidence": 0.98,
+                "reason": "close",
+            }
+        )
+        message = NormalizedMessage.from_public_web(
+            "cryptoninjas_trading_ann",
+            "new",
+            {
+                "channel_username": "cryptoninjas_trading_ann",
+                "message_id": 99202,
+                "date": "2026-03-20T01:49:46+00:00",
+                "text": "CLOSE BTCUSDT NOW",
+                "caption": "",
+            },
+        )
+
+        with mock.patch.object(self.runtime.ai, "_run_openclaw", return_value=openclaw_reply):
+            with mock.patch.object(self.runtime.okx, "_request", side_effect=fake_request):
+                self.runtime.process_message(message)
+
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "EXECUTED")
+        self.assertEqual([item[1] for item in requests], ["/api/v5/account/positions?instId=BTC-USDT-SWAP", "/api/v5/trade/order"])
+        self.assertEqual(requests[1][2]["side"], "sell")
+        self.assertEqual(requests[1][2]["sz"], "3.0")
+        self.assertEqual(requests[1][2]["reduceOnly"], "true")
+        self.assertEqual(snapshot["orders"][0]["action"], "close_all")
+        self.assertEqual(snapshot["orders"][0]["payload"]["execution_path"], "real_demo_rest")
+        self.assertEqual(snapshot["positions"][0]["payload"]["side"], "flat")
+        self.assertEqual(snapshot["positions"][0]["payload"]["qty"], 0.0)
 
     def test_invalid_position_mode_is_rejected(self):
         with self.assertRaises(ValueError):

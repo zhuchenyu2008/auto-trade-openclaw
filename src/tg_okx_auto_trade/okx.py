@@ -119,11 +119,15 @@ class OKXGateway:
             payload, exchange_order_id, attached_algo_orders = self._execute_real_demo_cancel_orders(intent)
             status = "canceled"
         else:
-            self._ensure_real_demo_leverage(intent)
             status = "filled"
             if intent.action in {"reverse_to_long", "reverse_to_short"}:
+                self._ensure_real_demo_leverage(intent)
                 payload, exchange_order_id, attached_algo_orders = self._execute_real_demo_reverse(intent)
             else:
+                if intent.action == "close_all":
+                    self.sync_real_demo_position(intent.symbol)
+                else:
+                    self._ensure_real_demo_leverage(intent)
                 body = self._build_real_order_body(intent)
                 payload = self._request("POST", "/api/v5/trade/order", body)
                 first = self._validate_real_demo_order(payload)
