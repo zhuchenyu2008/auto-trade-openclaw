@@ -1,40 +1,80 @@
 # tg-okx-auto-trade
 
-Minimal-dependency implementation of the Telegram signal watcher + OpenClaw intent extraction + OKX contracts demo execution system described in the project spec.
+这是一个面向 **Telegram 公开频道信号** 的自动交易演示仓库。
 
-This build is intentionally scoped for direct use in this environment:
+它的主要职责是：
 
-- contracts only: swap/futures
-- default leverage: `20x`
-- web panel default port: `6010`
-- global TP/SL exists and is disabled by default
-- config file is a first-class control surface alongside Web and Telegram topic output
-- demo/simulated trading only by default; no live trading tests are performed
-- demo-only enforcement is hard-blocked in config validation and risk checks
-- no secrets are stored in example files
+- 通过 `public_web` 抓取 Telegram 公开频道网页消息
+- 对消息做归一化、版本化、去重和补偿式对账
+- 调用 OpenClaw 提取交易意图
+- 执行风险检查
+- 把结果送到本地模拟执行器，或已配置的 **OKX Demo REST** 路径
+- 通过 Web / CLI / topic 输出运行状态和操作结果
 
-## What is implemented
+这份 README 只描述**当前仓库已经存在**的能力、命令和边界，不发明不存在的功能。
 
-- public Telegram webpage polling through `public_web` with new/edit detection and reconciliation hook
-- delete/revoke handling is not implemented in this dependency-light build; `listen_deletes` remains a stored config flag only
-- message normalization, versioning, idempotency, AI parsing, risk checks, execution pipeline
-- OpenClaw CLI adapter using the local default model path, with heuristic fallback
-- OKX execution gateway:
-  - simulated demo engine for safe local operation
-  - real OKX REST demo request path available when credentials are configured
-- topic logger via `openclaw message send`
-- local/Web small Claw operator command handling for `/help`, `/status`, `/readiness`, `/paths`, `/channels`, `/signals`, `/risk`, `/positions`, `/orders`, `/pause`, `/resume`, `/reconcile`, `/close`, and `/topic-test`
-- SQLite persistence for channels, messages, AI decisions, risk checks, orders, positions, logs, audit logs, sessions
-- authenticated web UI with 6-digit PIN, dashboard, AI config controls, trading controls, risk controls, channel management, logs, orders, positions, health
-- direct-use summary exposed consistently in CLI, runtime artifacts, and the Web dashboard
-- explicit capability/status view for manual demo path, OKX demo execution path, Telegram ingestion readiness, operator topic wiring, and demo-only safety lock
-- explicit web operator actions for pause, resume, reconcile-now, topic smoke test, and manual position close
-- observe-only execution path that records intended trades without touching OKX state
-- automatic demo-only safety pause when OKX execution fails
-- config loader and write-back through `config.json`
-- unit tests and a smoke verification script
+---
 
-## Project structure
+## 项目简介
+
+这个仓库当前的定位很明确：
+
+- 当前验收范围是 **`demo-only`**，也就是只验证模拟盘 / Demo 路径，不做实盘验收
+- 当前主路径是 **`public_web-first`**，优先从 Telegram 公开网页抓取消息，而不是 MTProto / Telethon
+- 当前只做 **`contracts only`**，也就是合约语义（swap / futures）
+- 默认杠杆是 **`20x`**
+- Web 默认端口是 **`6010`**
+- `config.json` / `config.demo.local.json` 是**第一等控制面**；Web 和 CLI 会围绕它工作，并会把部分修改写回配置文件
+
+如果你第一次接手这个仓库，可以把它理解成：
+
+- 一套能在本地直接跑起来的 Telegram 信号处理与 Demo 交易验证链路
+- 重点验证“采集 → 解析 → 风控 → Demo 执行 → Web/CLI/topic 可观测与控制”
+- 当前不是实盘产品说明书，也不是“所有能力都已完成”的对外宣称
+
+---
+
+## 当前能力与边界
+
+### 当前支持什么
+
+当前仓库已经实现并对外可用的主要能力有：
+
+- 通过 `public_web` 方式轮询 Telegram 公开频道网页
+- 识别新消息、编辑消息，并做归一化、版本化、幂等处理和补偿式对账
+- 调用 OpenClaw 提取交易意图；本地也保留启发式回退路径
+- 执行风险检查，并进入执行流水线
+- 支持本地模拟执行器
+- 在配置好凭据时，支持走真实的 **OKX Demo REST** 请求路径
+- 支持 topic 输出，支持 Web / CLI / small Claw 本地控制命令
+- 提供 SQLite 持久化、Web 面板、CLI 命令、运行时状态文件，以及若干 smoke / verify 脚本
+- 支持 `observe-only` 路径：记录预期交易，但不触碰 OKX 状态
+- 配置文件支持写回与热加载
+
+### 当前明确不支持或未完成的点
+
+下面这些点要明确知道，不要从 README 里脑补成“已经支持”：
+
+- 当前这轮验收是 **`demo-only`**，不做实盘测试，也不允许切到 live 路径
+- 主支持路径是 **`public_web-first`**；`mtproto` / inbound bot path 即使有兼容残留，也不是当前主线能力
+- 删除 / revoke 事件没有实现；`listen_deletes` 目前只是保留配置项
+- OKX 私有 WebSocket 对账未启用；当前重点是本地状态与 Demo REST 路径
+- 当前交易语义只覆盖合约，不覆盖现货等其他品类
+- 手动 CLI / Web 注入默认走本地模拟执行器；只有显式选择时才会走已配置的 OKX Demo REST
+
+### 关于 `demo-only` 的说明
+
+这里要区分“当前验收范围”和“长期方向”：
+
+- 当前这一轮 README、测试和操作说明，都按 **`demo-only`** 理解
+- 仓库里已经存在 OKX Demo REST 真请求路径，用于带凭据的 Demo 验证
+- 这不等于项目永远只能跑 Demo；只是你现在接手时，应该按 **Demo 验证仓库** 来操作
+
+---
+
+## 项目结构
+
+当前仓库根目录主要结构如下：
 
 ```text
 src/tg_okx_auto_trade/
@@ -49,50 +89,79 @@ src/tg_okx_auto_trade/
   telegram.py
   topic_logger.py
   web.py
-tests/
 scripts/
+tests/
 config.example.json
+config.demo.local.json
+.env.example
+README.md
 ```
 
-## Quick start
+重点说明：
 
-All commands below run directly from the repository root.
+- `src/tg_okx_auto_trade/`：主业务代码
+- `scripts/`：验证脚本、smoke 脚本、fixture 工具、demo 回归脚本
+- `tests/`：单测与 fixture 相关测试
+- `config.example.json`：通用示例配置
+- `config.demo.local.json`：当前仓库用于本地 Demo 联调的配置文件
+- `.env.example`：环境变量模板
 
-Create a local config file with a pinned 6-digit web login:
+---
+
+## 快速开始
+
+下面所有命令都默认在**仓库根目录**执行。
+
+---
+
+### 路径 A：从 `config.json` 开始
+
+适合第一次本地起一个最小可运行配置。
+
+#### 1）初始化配置并设置 Web PIN
 
 ```bash
 python3 -m tg_okx_auto_trade.main init-config --config config.json --pin 123456
 ```
 
-If you prefer an environment variable instead of a stored hash:
+这会生成一个本地 `config.json`，并给 Web 登录设置一个 6 位 PIN。
+
+#### 2）如果你不想把 PIN 哈希写进配置，也可以直接用环境变量
 
 ```bash
 cp config.example.json config.json
 export TG_OKX_WEB_PIN=123456
 ```
 
-Check readiness and print the exact run paths for the current config:
+#### 3）先做只读检查
 
 ```bash
 python3 -m tg_okx_auto_trade.main verify --config config.json
 python3 -m tg_okx_auto_trade.main direct-use --config config.json
+python3 -m tg_okx_auto_trade.main paths --config config.json
 ```
 
-Start the app:
+建议先看这三个命令：
+
+- `verify`：当前配置能不能跑、缺什么
+- `direct-use`：当前到底能直接怎么用
+- `paths`：Web / runtime / topic / 配置路径都指向哪里
+
+#### 4）启动服务
 
 ```bash
 python3 -m tg_okx_auto_trade.main serve --config config.json
 ```
 
-Then open `http://127.0.0.1:6010/login`.
+#### 5）打开 Web
 
-If you want a browser-free smoke check of the startup path:
-
-```bash
-python3 -m tg_okx_auto_trade.main serve --config config.json
+```text
+http://127.0.0.1:6010/login
 ```
 
-In another shell:
+#### 6）如果你只想先确认 HTTP 服务起来了
+
+另开一个终端：
 
 ```bash
 curl -i http://127.0.0.1:6010/login
@@ -100,74 +169,186 @@ curl -s http://127.0.0.1:6010/healthz
 curl -s http://127.0.0.1:6010/readyz
 ```
 
-For the checked-in demo wiring file in this workspace:
+---
+
+### 路径 B：使用仓库内的 `config.demo.local.json`
+
+适合直接沿用当前仓库已经整理好的 Demo 本地配置。
+
+#### 1）先看路径和状态
 
 ```bash
 python3 -m tg_okx_auto_trade.main paths --config config.demo.local.json
 python3 -m tg_okx_auto_trade.main verify --config config.demo.local.json
 python3 -m tg_okx_auto_trade.main direct-use --config config.demo.local.json
+```
+
+#### 2）如需把内联敏感信息迁移到本地 `.env`
+
+```bash
 python3 -m tg_okx_auto_trade.main externalize-secrets --config config.demo.local.json
+```
+
+#### 3）启动服务
+
+```bash
 python3 -m tg_okx_auto_trade.main serve --config config.demo.local.json
 ```
 
-This local demo config is prewired for:
+当前仓库里的这份 Demo 本地配置，通常会预接好这些内容：
 
-- Web on `http://127.0.0.1:6010/login`
-- runtime state under `runtime/demo-local/`
-- runtime direct-use files at `runtime/demo-local/direct-use.json`, `runtime/demo-local/direct-use.txt`, and `runtime/demo-local/public-state.json`
-- operator topic target `-1003720752566:topic:2080`
-- operator topic link `https://t.me/c/3720752566/2080`
-- demo-only trading guardrails
+- Web 登录页默认是 `http://127.0.0.1:6010/login`
+- runtime 数据目录在 `runtime/demo-local/`
+- operator topic 目标示例是 `-1003720752566:topic:2080`
+- 已有 `public_web` 频道样例配置
+- 交易模式保持 `demo`
+- 默认杠杆 `20x`
+- demo 本地配置里 AI agent 默认走 `tgokxai`
 
-This local demo profile is ready for Web control, config persistence, runtime artifacts, manual demo injection, the configured OKX demo REST path, and public Telegram source ingestion through enabled `public_web` channels.
+需要注意：
 
-The bundled local Web PIN is `123456`.
+- 如果 `config.demo.local.json` 里启用了 `okx.enabled=true`，自动链路会走“已配置的 OKX Demo 路径”
+- 但**手动注入消息**和 Web 里的 Demo 注入，默认仍然优先走**本地模拟执行器**
+- 只有你显式指定时，才会走带凭据的 OKX Demo REST 路径
 
-`config.demo.local.json`, `.env`, and `runtime/` are kept local-only and are ignored by git in this workspace so demo credentials and runtime state do not get swept into normal diffs.
-If OKX demo or Telegram secrets are still embedded inline in `config.demo.local.json`, prefer `python3 -m tg_okx_auto_trade.main externalize-secrets --config config.demo.local.json` so the local `.env` holds the secrets and the config file stays redacted.
+---
 
-Because `config.demo.local.json` has `okx.enabled=true`, automatic Telegram-driven execution will use the real OKX demo REST path. Manual `inject-message` and the Web demo-injection form now stay on the local simulated engine by default; opt into credentialed OKX demo execution only when you explicitly pass `--real-okx-demo`, use the Web "configured OKX path" option, or run `scripts/smoke_okx_demo.py`.
-In this build, the configured OKX demo REST path covers `open_*`, `add_*`, `reduce_*`, `reverse_*`, `close_all`, and `cancel_orders`. Absolute-price TP/SL values from the source signal are forwarded as `attachAlgoOrds` on supported OKX demo order placements, and configured-path `cancel_orders` reuses the locally tracked attached protection metadata to send OKX demo algo cancels when those ids are available. Ratio-based global TP/SL, trailing protection, and `update_protection` remain simulated-only on the configured path; these gaps are surfaced explicitly in `paths`, `verify`, and the Web dashboard.
-Manual close actions now follow the position source: simulated/manual-injected positions close on the simulated path, while credentialed OKX demo positions close on the configured demo REST path.
+## Web 使用方式
 
-For a one-command local regression pass that stays demo-only and suppresses outbound topic sends:
+Web 默认监听：
 
-```bash
-python3 scripts/run_demo_suite.py --config config.demo.local.json
+```text
+http://127.0.0.1:6010/login
 ```
 
-## Configuration
+当前 Web 主要用于这些事情：
 
-An editable install is optional, not required.
+- 查看系统状态、健康状态、运行时摘要、`direct-use` 信息
+- 查看消息、AI 决策、订单、仓位、日志、审计日志
+- 修改 AI 配置、交易开关、风险参数、频道配置
+- 配置 Telegram 采集与 operator topic
+- 执行 `pause`、`resume`、`reconcile-now`、`topic smoke`、手动平仓等动作
+- 从浏览器发起 Demo 信号注入，并显式选择模拟路径或已配置的 OKX Demo 路径
 
-1. Set a 6-digit web PIN:
-   - easiest: `python3 -m tg_okx_auto_trade.main init-config --config config.json --pin 123456`
-   - or export `TG_OKX_WEB_PIN=123456`
-   - or set `web.pin_hash` to a SHA256 hash of the PIN
-2. Add Telegram channels under `telegram.channels`.
-3. Configure an enabled `telegram.channels[]` entry with `source_type="public_web"` and `channel_username` pointing at a public channel like `https://t.me/s/lbeobhpreo`.
-4. Leave `okx.enabled=false` unless you explicitly want the real OKX demo REST path.
-5. Optionally set `telegram.report_topic` to a Telegram topic target like `-1001234567890:topic:123`. `telegram.operator_target` remains supported and overrides `report_topic` if both are set.
-The Web/config path also accepts topic links like `https://t.me/c/3720752566/2080` and normalizes them to the internal target form.
-The Telegram wiring form is now public_web-first. Legacy bot token fields are still available in a compatibility section when needed, without changing env-based secrets.
-6. If `ai.provider="openclaw"`, you can route this project through a dedicated OpenClaw agent by setting `ai.openclaw_agent_id` (for example `tgokxai`). This lets the project use a separate model/provider path from the main assistant session.
-7. Keep `trading.position_mode="net"` in this build.
+需要特别知道：
 
-When the HTTP server is already running, changing `web.host` or `web.port` updates the stored config immediately but does not rebind the live listener. The dashboard and `verify` output now show both the active bind and whether a restart is required.
+- Web 是控制面之一，但不是唯一控制面；配置文件仍然是第一等控制面
+- 当服务已经启动后，修改 `web.host` / `web.port` 会写回配置，但不会让当前 HTTP 监听即时换绑；这种情况需要重启服务
+- 本地快速检查时，可以直接访问 `/healthz` 和 `/readyz`，这两个端点不需要登录
 
-For a real Telegram + OKX demo wiring path, the minimum config is:
+---
 
-- at least one enabled `telegram.channels[]` entry with `source_type="public_web"` and `channel_username` pointing at a public Telegram channel page such as `https://t.me/s/lbeobhpreo`
-- `okx.enabled=true`
-- `okx.use_demo=true`
-- `okx.api_key`, `okx.api_secret`, `okx.passphrase` set for OKX demo, or the env trio `TG_OKX_OKX_API_KEY`, `TG_OKX_OKX_API_SECRET`, `TG_OKX_OKX_PASSPHRASE`
+## 常用 CLI 命令
 
-`verify` will warn when `mtproto` channels are configured, because this dependency-light build only actively supports the `public_web` watcher path in the intended operator scope.
+下面列的是**当前主 CLI 已实际暴露**的命令。
 
-The runtime auto-loads a local `.env` next to the config file and the repository-root `.env` as fallback. Existing shell environment variables still win. Local `.env` changes are watched alongside `config.json`, so newly added OKX demo credentials can be picked up without persisting them into the config file.
-An example variable layout is included in `.env.example`.
+### 1）启动与状态
 
-Example `public_web` channel entry:
+```bash
+python3 -m tg_okx_auto_trade.main serve --config config.json
+python3 -m tg_okx_auto_trade.main verify --config config.json
+python3 -m tg_okx_auto_trade.main paths --config config.json
+python3 -m tg_okx_auto_trade.main direct-use --config config.json
+python3 -m tg_okx_auto_trade.main snapshot --config config.json
+```
+
+### 2）注入测试信号
+
+安全默认路径：**本地模拟执行**。
+
+```bash
+python3 -m tg_okx_auto_trade.main inject-message --config config.json --text "LONG BTCUSDT now"
+```
+
+如需显式走已配置的 OKX Demo REST 路径：
+
+```bash
+python3 -m tg_okx_auto_trade.main inject-message --config config.demo.local.json --real-okx-demo --text "LONG BTCUSDT now"
+```
+
+模拟编辑消息版本：
+
+```bash
+python3 -m tg_okx_auto_trade.main inject-message --config config.json --text "SHORT BTCUSDT now" --message-id 101 --event-type edit --version 2
+```
+
+### 3）运行时控制
+
+```bash
+python3 -m tg_okx_auto_trade.main pause --config config.json
+python3 -m tg_okx_auto_trade.main resume --config config.json
+python3 -m tg_okx_auto_trade.main reconcile --config config.json
+python3 -m tg_okx_auto_trade.main topic-test --config config.json
+python3 -m tg_okx_auto_trade.main close-positions --config config.json
+python3 -m tg_okx_auto_trade.main reset-local-state --config config.json
+```
+
+### 4）配置辅助命令
+
+```bash
+python3 -m tg_okx_auto_trade.main init-config --config config.json --pin 123456
+python3 -m tg_okx_auto_trade.main hash-pin --pin 123456
+python3 -m tg_okx_auto_trade.main externalize-secrets --config config.demo.local.json
+python3 -m tg_okx_auto_trade.main set-topic-target --config config.demo.local.json --target https://t.me/c/3720752566/2080
+python3 -m tg_okx_auto_trade.main upsert-channel --config config.demo.local.json --name "VIP Public" --source-type public_web --channel-username https://t.me/s/lbeobhpreo
+python3 -m tg_okx_auto_trade.main set-channel-enabled --config config.demo.local.json --channel-id vip_public --disabled
+python3 -m tg_okx_auto_trade.main remove-channel --config config.demo.local.json --channel-id vip_public
+```
+
+### 5）operator 命令本地演练
+
+```bash
+python3 -m tg_okx_auto_trade.main operator-command --config config.json --text '/status'
+```
+
+### 6）查看当前 CLI 全量子命令
+
+```bash
+python3 -m tg_okx_auto_trade.main --help
+```
+
+当前 CLI 子命令包括：
+
+- `serve`
+- `verify`
+- `paths`
+- `direct-use`
+- `snapshot`
+- `inject-message`
+- `pause`
+- `resume`
+- `reconcile`
+- `topic-test`
+- `operator-command`
+- `set-topic-target`
+- `upsert-channel`
+- `set-channel-enabled`
+- `remove-channel`
+- `reset-local-state`
+- `close-positions`
+- `externalize-secrets`
+- `init-config`
+- `hash-pin`
+
+---
+
+## 配置说明
+
+### `config` 是第一等控制面
+
+当前仓库里，`config.json` / `config.demo.local.json` 不是附属文件，而是**第一等控制面**：
+
+- Web 会读取它，也会把部分修改写回它
+- runtime 会监控它的变化，并按配置重载
+- `verify` / `paths` / `direct-use` 都以它为准输出当前实际状态
+
+如果你接手这个仓库，建议先看配置文件，再看 Web；不要反过来理解。
+
+---
+
+### `public_web` 是当前主路径
+
+如果要接 Telegram 公开频道，当前推荐并实际支持的方式，是给 `telegram.channels[]` 配一个 `source_type="public_web"` 的频道项，例如：
 
 ```json
 {
@@ -192,239 +373,196 @@ Example `public_web` channel entry:
 }
 ```
 
-The channel editor also accepts:
+当前 `channel_username` 可接受：
 
-- `chat_id`: raw `-100...` ids or `https://t.me/c/<chat>/<message>` links
-- `channel_username`: `@name`, `https://t.me/name`, or `https://t.me/s/name` for `public_web`
+- `@name`
+- `https://t.me/name`
+- `https://t.me/s/name`
 
-## Inject a local test signal
+`chat_id` 可接受：
 
-```bash
-python3 -m tg_okx_auto_trade.main inject-message --config config.json --text "LONG BTCUSDT now"
+- 原始 `-100...`
+- `https://t.me/c/<chat>/<message>` 形式的链接
+
+---
+
+### operator topic
+
+当前支持把 topic 作为运行输出和操作面的一部分。
+
+关键字段在 `telegram` 下：
+
+- `report_topic`
+- `operator_target`
+- `operator_thread_id`
+
+说明：
+
+- 如果同时设置了 `operator_target` 和 `report_topic`，以 `operator_target` 为准
+- 目标既可以写成内部形式，例如 `-1001234567890:topic:123`
+- 也可以写成 topic 链接，例如 `https://t.me/c/3720752566/2080`
+- Web / CLI 会做归一化处理
+
+---
+
+### OKX Demo 凭据
+
+当前范围里只验证 **OKX Demo**，不验证实盘。
+
+关键字段在 `okx` 下：
+
+- `enabled`
+- `use_demo`
+- `api_key`
+- `api_secret`
+- `passphrase`
+- 以及对应的 `*_env` 字段
+
+最小前提通常是：
+
+- `okx.enabled=true`
+- `okx.use_demo=true`
+- 配好 Demo 环境的 `api_key` / `api_secret` / `passphrase`
+
+也可以不把这些值直接写进配置，而是放进环境变量：
+
+- `TG_OKX_OKX_API_KEY`
+- `TG_OKX_OKX_API_SECRET`
+- `TG_OKX_OKX_PASSPHRASE`
+
+如果凭据环境不匹配，系统会把 OKX 的 `50101` 之类错误明确提示为环境不匹配问题。
+
+---
+
+### `.env` 的作用
+
+当前 runtime 会优先加载“配置文件旁边的 `.env`”，找不到时再回退到仓库根目录 `.env`。已有 shell 环境变量优先级更高。
+
+仓库里已有 `.env.example`，包含这些键：
+
+```text
+TG_OKX_WEB_PIN=123456
+TG_OKX_TELEGRAM_BOT_TOKEN=
+TG_OKX_OKX_API_KEY=
+TG_OKX_OKX_API_SECRET=
+TG_OKX_OKX_PASSPHRASE=
 ```
 
-This creates a normalized Telegram message, runs AI parsing, runs risk checks, and executes against the simulated OKX demo engine.
-
-If you intentionally want the configured OKX demo REST path instead of the safe simulated path:
+如果你已经把敏感信息写进 `config.demo.local.json`，可以用下面命令迁移：
 
 ```bash
-python3 -m tg_okx_auto_trade.main inject-message --config config.demo.local.json --real-okx-demo --text "LONG BTCUSDT now"
+python3 -m tg_okx_auto_trade.main externalize-secrets --config config.demo.local.json
 ```
 
-If OKX replies with `50101` / `APIKey does not match current environment.`, the app now surfaces that as an environment-mismatch hint. In practice, this means the current key is not a demo-environment key for the `x-simulated-trading: 1` path. Use a true OKX demo key/passphrase pair before expecting credentialed demo orders to work.
+---
 
-To simulate an edited Telegram message version:
+### 关键默认值
 
-```bash
-python3 -m tg_okx_auto_trade.main inject-message --config config.json --text "SHORT BTCUSDT now" --message-id 101 --event-type edit --version 2
-```
+当前仓库里几个重要默认值如下：
 
-For a local read-only state dump without starting background polling:
+- 交易模式默认是 `demo`
+- 执行模式默认是 `automatic`
+- 默认杠杆是 `20`
+- Web 默认端口是 `6010`
+- `global_tp_sl_enabled` 默认关闭
+- `position_mode` 在当前构建里应保持 `net`
 
-```bash
-python3 -m tg_okx_auto_trade.main paths --config config.json
-python3 -m tg_okx_auto_trade.main verify --config config.json
-python3 -m tg_okx_auto_trade.main direct-use --config config.json
-python3 -m tg_okx_auto_trade.main snapshot --config config.json
-```
+---
 
-`paths` prints the shortest direct-use summary: web/runtime/operator topic paths, current wiring, capability status, and the remaining gaps list.
-`verify` returns a read-only readiness report with config/auth/storage checks plus the current runtime snapshot.
-`direct-use` prints the same redacted terminal-first summary that is written to `runtime/.../direct-use.txt`, and `direct-use --json` emits the structured payload used to build that text view.
-Sensitive fields such as bot tokens, OKX credentials, web PIN hashes, and session IDs are redacted from CLI/Web snapshots.
-It also reports the normalized operator topic link and a `remaining_gaps` list so you can see, in one place, what is still blocking end-to-end automatic use.
-The capability table now includes `current_operating_profile`, which distinguishes "manual/demo direct use is ready" from "full automatic Telegram ingestion is ready".
-`verify`, the Web dashboard, and the runtime artifacts also expose an `activation_summary` matrix so you can inspect manual demo, automatic Telegram ingestion, operator-topic outbound/inbound, configured OKX demo, and the demo-only safety lock as separate paths instead of one collapsed status.
-`paths` and the Web dashboard now also expose an `activation_checklist` plus placeholder-safe `setup_examples` snippets so the next config edit for operator-topic wiring, `public_web` source channels, and OKX demo stays explicit.
-`paths` now includes the repository root hint, absolute smoke-script commands, and browser-free `curl` commands for `/login`, `/healthz`, and `/readyz`, so you can execute the direct-use flow even when you are not already sitting in the repo root.
-The runtime also writes redacted copies of this information into `runtime/.../direct-use.json`, `runtime/.../direct-use.txt`, and `runtime/.../public-state.json` so you can inspect the effective wiring without opening the Web UI.
-`direct-use.txt` is the shortest human-readable summary for terminal-first operation; the JSON files keep the structured detail for scripts and review.
-Those outputs now also expose `topic_delivery_state`, `topic_delivery_detail`, and `topic_delivery_verified`, so "topic target configured" and "topic smoke already succeeded in this runtime" are visible as different states in CLI/Web/runtime artifacts.
-Those runtime artifacts now also carry `verification_status` plus the same actionable `next_steps` list exposed by `verify`, so the file-based/demo path stays directly operable without switching back to the CLI.
-For terminal-first setup, you can wire the operator topic and `public_web` source channels without editing JSON manually:
+## 当前限制 / 已知边界
 
-```bash
-python3 -m tg_okx_auto_trade.main set-topic-target --config config.demo.local.json --target https://t.me/c/3720752566/2080
-python3 -m tg_okx_auto_trade.main upsert-channel --config config.demo.local.json --name "VIP Public" --source-type public_web --channel-username https://t.me/s/lbeobhpreo
-python3 -m tg_okx_auto_trade.main set-channel-enabled --config config.demo.local.json --channel-id vip_public --disabled
-python3 -m tg_okx_auto_trade.main remove-channel --config config.demo.local.json --channel-id vip_public
-```
+- 当前验收和默认安全边界是 **`demo-only`**
+- 当前主线采集路径是 **`public_web-first`**
+- 当前只覆盖 **`contracts only`**
+- 删除消息事件未实现，`listen_deletes` 仅保留配置位
+- 私有 WebSocket 对账未启用；当前以本地状态与 Demo REST 为主
+- 手动 CLI / Web 注入默认走本地模拟执行器；只有显式选择时才走配置好的 OKX Demo REST
+- 当真实 OKX Demo REST 执行失败时，系统会自动 `pause`，避免继续发单
+- `mtproto` 相关配置项可存在，但不属于当前主支持范围
+- legacy inbound Telegram bot command 可能仍有内部残留，但不属于当前计划/支持主路径
 
-When no channel exists yet, `paths` now prints `set-channel-enabled` and `remove-channel` helpers with a `<channel-id-from-upsert-channel>` placeholder instead of a misleading fake id.
+---
 
-## Direct-use paths
+## 测试与验证
 
-- CLI bootstrap: `python3 -m tg_okx_auto_trade.main init-config --config config.json --pin 123456`
-- CLI paths: `python3 -m tg_okx_auto_trade.main paths --config config.json`
-- CLI verify: `python3 -m tg_okx_auto_trade.main verify --config config.json`
-- CLI direct-use summary: `python3 -m tg_okx_auto_trade.main direct-use --config config.json`
-- CLI snapshot: `python3 -m tg_okx_auto_trade.main snapshot --config config.json`
-- CLI serve: `python3 -m tg_okx_auto_trade.main serve --config config.json`
-- CLI test signal: `python3 -m tg_okx_auto_trade.main inject-message --config config.json --text "LONG BTCUSDT now"`
-- CLI credentialed OKX demo test signal: `python3 -m tg_okx_auto_trade.main inject-message --config config.demo.local.json --real-okx-demo --text "LONG BTCUSDT now"`
-- CLI config helpers: `set-topic-target`, `upsert-channel`, `set-channel-enabled`, `remove-channel`
-- CLI secret helper: `externalize-secrets` moves inline Telegram/OKX secrets from the config into the local `.env`
-- CLI runtime actions: `pause`, `resume`, `reconcile`, `topic-test`, `close-positions`
-- CLI local cleanup: `reset-local-state` clears only local runtime DB/log/session state and locally tracked positions; it does not touch any external OKX demo position or order
-- CLI operator dry-run: `operator-command --text '/status'`
-- Web login: `http://127.0.0.1:6010/login`
-- Web runtime controls:
-  - AI config: provider, model, thinking level, timeout, system prompt
-  - trading mode, pause/resume, leverage, TP/SL, close-only
-  - Telegram wiring: public_web-first channel setup, report topic/operator target, operator thread, poll interval
-  - channel add, edit, enable/disable, remove with config write-back
-  - demo signal injection from the browser with explicit simulated/configured path selection
-  - reconcile-now, topic smoke, reset-local-state, and operator-command dry runs
-  - manual close-all or per-position close actions
-  - recent normalized messages and AI decisions
-- Config file remains first-class and is hot-reloaded by the runtime watcher
-
-## Test
-
-Unit tests:
+### 单元测试
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-Smoke verification:
+### 基础验证
 
 ```bash
 python3 scripts/verify_demo.py --config config.demo.local.json
 ```
 
-This checks the checked-in `config.demo.local.json` wiring and redaction paths, then runs a separate safe local simulated smoke clone so it never places a real OKX demo order during the generic verify step.
-It also verifies that the checked-in demo profile writes fresh runtime artifacts under `runtime/demo-local/`, including `direct-use.json`, `direct-use.txt`, and `public-state.json`.
-
-M3 operator prep:
-
-```bash
-python3 scripts/m3_acceptance_prep.py --config config.demo.local.json --format markdown > runtime/demo-local/m3-acceptance-prep.md
-```
-
-This is a repo-side readiness helper only. It does not perform Telegram or OKX validation. It saves the exact manual `M3` sequence, runtime artifact paths, redacted credential-presence status, evidence checks, and claim boundaries for the main-session credentialed demo run.
-The operator handoff is documented in `docs/telegram-okx-openclaw-m3-acceptance-runbook.md`.
-
-Web/controller/runtime smoke:
+### 常见 smoke
 
 ```bash
 python3 scripts/smoke_web.py --config config.demo.local.json
-```
-
-This smoke test exercises the login flow and Web actions through the same controller logic used by the HTTP server, without requiring external network access.
-
-Operator command smoke:
-
-```bash
 python3 scripts/smoke_operator.py --config config.demo.local.json
-```
-
-This verifies the local operator-command path plus watcher routing for topic messages without sending anything to Telegram.
-
-Telegram watcher/reconcile smoke:
-
-```bash
 python3 scripts/smoke_telegram.py --config config.demo.local.json
-```
-
-This exercises Bot API watcher update handling for new/edit messages plus the buffered reconciliation path, entirely offline.
-
-Config/path normalization smoke:
-
-```bash
 python3 scripts/smoke_config.py --config config.demo.local.json
-```
-
-This verifies config write-back, topic-link normalization, channel target normalization, and persisted runtime/web paths.
-
-Offline end-to-end smoke:
-
-```bash
 python3 scripts/smoke_e2e.py --config config.demo.local.json
-```
-
-This runs a local end-to-end demo-only flow: simulated Telegram update -> runtime pipeline -> authenticated Web state check -> operator command -> manual close.
-
-HTTP server smoke:
-
-```bash
 python3 scripts/smoke_http_server.py --config config.demo.local.json
-```
-
-This starts the real local HTTP server on a temporary port, exercises `/login`, `/api/state`, demo signal injection, and manual close, then shuts the process down cleanly.
-
-Runtime/config hot-reload smoke:
-
-```bash
 python3 scripts/smoke_runtime.py --config config.demo.local.json
-```
-
-This clones `config.demo.local.json` into a temporary runtime, verifies direct-use paths, hot-reloads a config edit from disk, runs a simulated demo order, and exercises pause/resume/reconcile without touching live trading.
-
-Credentialed OKX demo smoke:
-
-```bash
 python3 scripts/smoke_okx_demo.py --config config.demo.local.json
-```
-
-This places a minimal OKX demo order through the real demo REST path, then closes it again. It never touches live trading and suppresses topic logging during the smoke run.
-
-CLI direct-operation smoke:
-
-```bash
 python3 scripts/smoke_cli.py --config config.demo.local.json
 ```
 
-This clones `config.demo.local.json` into a temporary runtime and exercises the direct CLI state, pause/resume, reconcile, topic-test, and close-position paths without touching live trading.
-
-Full local demo regression:
+### 完整本地 Demo 回归
 
 ```bash
 python3 scripts/run_demo_suite.py --config config.demo.local.json
 ```
 
-This runs the unit suite plus config/web/runtime/operator/telegram/CLI/E2E/demo smoke steps. The runner now clears any inherited `TG_OKX_DISABLE_TOPIC_SEND` from the parent shell before starting the generic unit and verify steps, then reapplies it only to the smoke steps that should stay offline.
-The suite result is explicitly tagged as `demo_only`, and it reports `live_trading_tested: false`.
+如果当前环境禁止外网，真实 topic smoke 或 OKX Demo smoke 可能会被跳过或失败；这不等于本地 runtime / Web / 模拟链路本身有问题。
 
-If the current environment blocks external network access, the OKX demo smoke and real topic smoke can report `skipped` or a network failure even though the local demo/runtime/Web paths are healthy.
+---
 
-## Notes on strict-spec coverage
+## 里程碑更新过程
 
-- Web login is 6-digit PIN-based and persists sessions in SQLite.
-- Config changes made in Web write back into `config.json`, and simulated position state is restored from SQLite on restart.
-- Global TP/SL fields exist, default to disabled, and are visible/editable in the Web UI.
-- When global TP/SL is enabled, new simulated open/add/reverse orders automatically carry those protection settings into stored order/position state.
-- Trading is constrained to contract semantics. Live mode and non-demo OKX execution are rejected by config validation and blocked again by the risk/execution layers.
-- `observe` / `execution_mode=observe` records the intended order but does not execute it.
-- `execution_mode=automatic` is the normal path in this build. `semi_automatic` is intentionally not exposed because there is no approval queue/confirm workflow behind it yet.
-- Real OKX demo REST failures now trigger an automatic pause so the runtime stops issuing further orders until the operator fixes config and resumes.
-- Real OKX demo REST execution now pre-sets the configured leverage per instrument before submitting the order, which improves first-run demo usability.
-- Manual CLI/Web signal injection is safe-by-default: it stays on the simulated engine unless you explicitly opt into the configured OKX demo REST path.
-- Topic logging is implemented through OpenClaw Telegram send commands. Configure `telegram.report_topic` or `telegram.operator_target`, and optionally `telegram.operator_thread_id`.
-- The intended operator surface is outbound topic logging plus Web/local small Claw commands. Legacy inbound Telegram bot commands may still exist internally, but they are no longer treated as a planned/supported mainline capability.
-- The Web UI now exposes direct-use controls for Telegram wiring, channel lifecycle, demo signal injection, pause/resume/reconcile actions, and recent message/AI inspection.
-- Local smoke endpoints are available at `/healthz` and `/readyz` without login for quick verification.
-- Telegram `mtproto` channel records are accepted in config but not actively consumed in this zero-dependency build. The intended live watcher path is `public_web`.
-- OKX private WebSocket reconciliation is not active in this dependency-light version; simulated execution state is reconciled internally, and a real REST demo submission path is included for credentialed use.
-- Simulated execution now covers `reverse_to_long`, `reverse_to_short`, `cancel_orders`, and `update_protection` in addition to open/add/reduce/close flows.
+下面这段不是路线图许诺，而是对当前仓库这一轮 **M0–M5** 收口内容的中文总结。
 
-## Self-review against the spec and test plan
+### M0：测试文档基线
 
-Satisfied directly:
+- 补齐测试文档、测试计划和最终验收文档
+- 先把“怎么跑、怎么验、验收边界是什么”固定下来，形成可复查的文档基线
 
-- complete project structure
-- runnable app
-- `config.example.json` and local config loader
-- web UI on port `6010`
-- Telegram watcher pipeline for public Telegram webpages
-- OpenClaw orchestration path with fallback
-- OKX demo execution path
-- topic logger support
-- tests and smoke verification
-- README run/test instructions
+### M1：fixture / 测试资产基础
 
-Known gaps:
+- 补齐本地 fixture、配置样例、运行时测试资产
+- 让后续 smoke、回归、配置归一化验证有稳定输入
 
-- MTProto/Telethon watcher is not implemented because the build avoids external packages
-- OKX private WebSocket sync is not implemented; the real REST demo path exists, and the simulated engine maintains local execution/position state
-- Legacy inbound operator-topic bot commands may still exist internally, but they are outside the intended supported operator scope
+### M2 / M3：运行链与 Demo 执行能力收口
+
+- 把消息处理链、AI 提取、风控、执行路径串起来
+- 收口本地模拟执行与带凭据的 OKX Demo 执行能力
+- 明确当前只做 Demo 验证，不把未完成能力混进验收口径
+
+### M4：Web / Topic / 小 Claw 控制面、`public_web-first`、中文化、状态一致性
+
+- 补齐 Web 控制面、topic 相关操作面和 small Claw 本地控制链路
+- 明确 `public_web-first` 是当前主路径
+- 强化 CLI / Web / runtime 文件之间的状态一致性和 `direct-use` 摘要
+- 收口 Web operator-facing 中文化
+
+### M5：恢复、异常、稳定性与最终验收
+
+- 补恢复路径、异常提示、自动暂停、安全边界和稳定性验证
+- 把最终验收口径收敛到可重复执行的 Demo 路径、验证脚本和已知边界说明上
+
+---
+
+## 最后提醒
+
+如果你现在只是想**快速接手并跑起来**，建议按下面顺序做：
+
+1. 先看 `config.demo.local.json`
+2. 跑 `verify` / `direct-use` / `paths`
+3. 再启动 `serve`
+4. 打开 Web 看状态
+5. 最后再做 `inject-message`、`topic-test`、`run_demo_suite.py` 这类验证
+
+这样最不容易走偏。
