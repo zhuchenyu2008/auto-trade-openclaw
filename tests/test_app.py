@@ -2890,6 +2890,29 @@ class AppTests(unittest.TestCase):
         self.assertIn("requestId !== latestLoadRequestId", body)
         self.assertIn("await load();", body)
 
+    def test_web_homepage_channels_section_uses_click_safe_layout(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn('.card--channels{grid-column:1/-1;min-width:0}', body)
+        self.assertIn('<section class="card card--channels"><h2>Channels</h2>', body)
+        self.assertIn('<div class="table-scroll"><table class="channel-table">', body)
+        self.assertIn('class="channel-actions"', body)
+        self.assertIn('data-channel-action="toggle"', body)
+        self.assertNotIn("header,header *{pointer-events:none}", body)
+
     def test_runtime_operator_command_status_and_close(self):
         self.runtime.process_message(self._message("LONG BTCUSDT SIZE 1"))
         status_result = self.runtime.run_operator_command("/status", source="test")

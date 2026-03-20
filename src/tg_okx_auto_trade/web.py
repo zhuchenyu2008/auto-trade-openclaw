@@ -28,6 +28,7 @@ HTML = """<!doctype html>
     header{padding:20px 24px;border-bottom:1px solid var(--line);background:rgba(255,253,248,.85);position:sticky;top:0;backdrop-filter: blur(8px)}
     main{padding:20px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
     .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 10px 25px rgba(78,54,28,.08)}
+    .card--channels{grid-column:1/-1;min-width:0}
     h1,h2{margin:0 0 12px 0}
     .hero{display:flex;justify-content:space-between;gap:16px;align-items:end}
     .muted{color:var(--muted)}
@@ -38,6 +39,9 @@ HTML = """<!doctype html>
     form{display:grid;gap:10px}
     table{width:100%;border-collapse:collapse;font-size:13px}
     td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+    .table-scroll{overflow-x:auto}
+    .channel-actions{display:flex;flex-wrap:wrap;gap:8px}
+    .channel-table td:last-child,.channel-table th:last-child{min-width:220px}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     @media(max-width:720px){main,.grid2{grid-template-columns:1fr}}
   </style>
@@ -88,7 +92,7 @@ HTML = """<!doctype html>
       const positions = openPositions.length
         ? openPositions.map(item => `<tr><td>${esc(item.symbol)}</td><td>${esc(item.payload.side)}</td><td>${esc(item.payload.qty)}</td><td>${esc(item.payload.leverage)}</td><td>${esc(item.payload.unrealized_pnl)}</td><td>${esc(JSON.stringify(item.payload.protection || {}))}</td><td><button type="button" data-close-symbol="${esc(item.symbol)}">Close</button></td></tr>`).join('')
         : '<tr><td colspan="7">No open positions.</td></tr>';
-      const channels = data.config.telegram.channels.map(ch => `<tr><td>${esc(ch.name)}</td><td>${esc(ch.source_type)}</td><td>${esc(ch.chat_id || ch.channel_username)}</td><td>${esc(ch.enabled)}</td><td>${esc(ch.reconcile_interval_seconds)}</td><td><button type="button" data-channel-action="edit" data-channel-id="${esc(ch.id)}">Edit</button> <button type="button" data-channel-action="toggle" data-channel-id="${esc(ch.id)}">${ch.enabled ? 'Disable' : 'Enable'}</button> <button type="button" data-channel-action="remove" data-channel-id="${esc(ch.id)}">Remove</button></td></tr>`).join('');
+      const channels = data.config.telegram.channels.map(ch => `<tr><td>${esc(ch.name)}</td><td>${esc(ch.source_type)}</td><td>${esc(ch.chat_id || ch.channel_username)}</td><td>${esc(ch.enabled)}</td><td>${esc(ch.reconcile_interval_seconds)}</td><td><div class="channel-actions"><button type="button" data-channel-action="edit" data-channel-id="${esc(ch.id)}">Edit</button><button type="button" data-channel-action="toggle" data-channel-id="${esc(ch.id)}">${ch.enabled ? 'Disable' : 'Enable'}</button><button type="button" data-channel-action="remove" data-channel-id="${esc(ch.id)}">Remove</button></div></td></tr>`).join('');
       const messages = data.messages.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.chat_id)}</td><td>${esc(item.message_id)} v${esc(item.version)}</td><td>${esc(item.event_type)}</td><td>${esc(item.status)}</td><td>${esc(item.payload.text || item.payload.caption || '')}</td></tr>`).join('');
       const decisions = data.ai_decisions.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.payload.symbol)}</td><td>${esc(item.payload.action)}</td><td>${esc(item.payload.confidence)}</td><td>${esc(item.payload.reason)}</td></tr>`).join('');
       const health = esc(JSON.stringify(data.health, null, 2));
@@ -247,8 +251,8 @@ HTML = """<!doctype html>
             <button>Run Operator Command</button>
           </form>
         </section>
-        <section class="card"><h2>Channels</h2>
-          <table><tr><th>Name</th><th>Adapter</th><th>Target</th><th>Enabled</th><th>Reconcile</th><th>Actions</th></tr>${channels}</table>
+        <section class="card card--channels"><h2>Channels</h2>
+          <div class="table-scroll"><table class="channel-table"><tr><th>Name</th><th>Adapter</th><th>Target</th><th>Enabled</th><th>Reconcile</th><th>Actions</th></tr>${channels}</table></div>
           <form id="channelForm">
             <input name="id" placeholder="channel id (leave empty to derive)">
             <input name="name" placeholder="display name">
