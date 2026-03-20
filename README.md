@@ -108,6 +108,21 @@ README.md
 
 ---
 
+## 文档导航
+
+如果你不是只想“跑起来”，而是准备继续接手这个项目，建议按下面顺序读：
+
+1. `README.md`（先看项目简介、能力边界、快速开始和常用命令）
+2. `docs/telegram-okx-openclaw-milestones.md`（看原始 `M0`–`M5` 里程碑口径）
+3. `docs/README-testing.md`（看测试文档总入口）
+4. `docs/telegram-okx-openclaw-small-claw-system-prompt.md`（看小 Claw 系统提示词草案）
+5. `docs/telegram-okx-openclaw-small-claw-skill.md`（看小 Claw 的 operator skill / 行为说明草案）
+
+如果你当前最关心的是“怎么把项目跑起来”，继续往下看本 README 即可。  
+如果你当前最关心的是“怎么给 operator / 小 Claw 接线”，优先看上面第 4、5 两份文档。
+
+---
+
 ## 快速开始
 
 下面所有命令都默认在**仓库根目录**执行。
