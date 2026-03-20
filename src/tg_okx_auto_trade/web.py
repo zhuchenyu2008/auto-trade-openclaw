@@ -72,7 +72,50 @@ HTML = """<!doctype html>
       return res.text();
     }
     function esc(v){ return String(v == null ? '' : v).replace(/[&<>]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[s])); }
+    function captureChannelFormState() {
+      const form = document.getElementById('channelForm');
+      if (!form) return null;
+      return {
+        mode: form.dataset.mode || 'create',
+        dirty: form.dataset.dirty === 'true',
+        id: form.elements.id.value,
+        name: form.elements.name.value,
+        source_type: form.elements.source_type.value,
+        chat_id: form.elements.chat_id.value,
+        channel_username: form.elements.channel_username.value,
+        enabled: form.elements.enabled.value,
+        reconcile_interval_seconds: form.elements.reconcile_interval_seconds.value,
+        dedup_window_seconds: form.elements.dedup_window_seconds.value,
+        notes: form.elements.notes.value
+      };
+    }
+    function restoreChannelFormState(state) {
+      if (!state || (!state.dirty && state.mode !== 'edit')) return;
+      const form = document.getElementById('channelForm');
+      if (!form) return;
+      form.elements.id.value = state.id || '';
+      form.elements.name.value = state.name || '';
+      form.elements.source_type.value = state.source_type || 'public_web';
+      form.elements.chat_id.value = state.chat_id || '';
+      form.elements.channel_username.value = state.channel_username || '';
+      form.elements.enabled.value = state.enabled || 'true';
+      form.elements.reconcile_interval_seconds.value = state.reconcile_interval_seconds || 30;
+      form.elements.dedup_window_seconds.value = state.dedup_window_seconds || 3600;
+      form.elements.notes.value = state.notes || '';
+      form.dataset.mode = state.mode || 'create';
+      form.dataset.dirty = state.dirty ? 'true' : 'false';
+      const submit = document.getElementById('channelSubmitButton');
+      if (submit) submit.textContent = 'Save Channel';
+    }
+    function shouldDeferBackgroundLoad() {
+      const form = document.getElementById('channelForm');
+      if (!form) return false;
+      if (form.dataset.mode === 'edit' || form.dataset.dirty === 'true') return true;
+      const active = document.activeElement;
+      return !!(active && form.contains(active));
+    }
     function render(data) {
+      const channelFormState = captureChannelFormState();
       window.currentState = data;
       const demoSignalText = __DEMO_SIGNAL_TEXT__;
       const nextDemoSignalMessageId = data.messages.reduce((maxId, item) => {
@@ -277,7 +320,7 @@ HTML = """<!doctype html>
               <input name="dedup_window_seconds" type="number" min="1" value="3600">
             </div>
             <textarea name="notes" rows="2" placeholder="notes"></textarea>
-            <button id="channelSubmitButton">Save Channel</button>
+            <button id="channelSubmitButton" type="submit">Save Channel</button>
           </form>
         </section>
         <section class="card"><h2>Demo Signal Test</h2>
@@ -314,11 +357,15 @@ HTML = """<!doctype html>
         <section class="card"><h2>Audit Logs</h2><table><tr><th>Time</th><th>Category</th><th>Message</th></tr>${auditLogs}</table></section>
         <section class="card"><h2>Health</h2><pre>${health}</pre></section>`;
       bindForms();
+      restoreChannelFormState(channelFormState);
     }
-    async function load(){
+    async function load(options){
+      const background = !!(options && options.background);
+      if (background && shouldDeferBackgroundLoad()) return;
       const requestId = ++latestLoadRequestId;
       const data = await api('/api/state');
       if (!data || requestId !== latestLoadRequestId) return;
+      if (background && shouldDeferBackgroundLoad()) return;
       render(data);
     }
     function setChannelForm(channel){
@@ -333,8 +380,10 @@ HTML = """<!doctype html>
       form.elements.reconcile_interval_seconds.value = channel && channel.reconcile_interval_seconds ? channel.reconcile_interval_seconds : 30;
       form.elements.dedup_window_seconds.value = channel && channel.dedup_window_seconds ? channel.dedup_window_seconds : 3600;
       form.elements.notes.value = channel && channel.notes ? channel.notes : '';
+      form.dataset.mode = channel ? 'edit' : 'create';
+      form.dataset.dirty = 'false';
       const submit = document.getElementById('channelSubmitButton');
-      if (submit) submit.textContent = channel ? 'Update Channel' : 'Save Channel';
+      if (submit) submit.textContent = 'Save Channel';
     }
     function bindForms(){
       const modeForm = document.getElementById('modeForm');
@@ -411,28 +460,35 @@ HTML = """<!doctype html>
         }
       });
       const channelForm = document.getElementById('channelForm');
-      if (channelForm) channelForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const f = new FormData(e.target);
-        try {
-          await api('/api/channels/upsert', {method:'POST', body: JSON.stringify({
-            id:String(f.get('id')),
-            name:String(f.get('name')),
-            source_type:String(f.get('source_type')),
-            chat_id:String(f.get('chat_id')),
-            channel_username:String(f.get('channel_username')),
-            enabled:String(f.get('enabled')) === 'true',
-            reconcile_interval_seconds:Number(f.get('reconcile_interval_seconds')),
-            dedup_window_seconds:Number(f.get('dedup_window_seconds')),
-            notes:String(f.get('notes'))
-          })});
-          e.target.reset();
-          setChannelForm(null);
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
+      if (channelForm) {
+        channelForm.dataset.mode = channelForm.dataset.mode || 'create';
+        channelForm.dataset.dirty = channelForm.dataset.dirty || 'false';
+        const markDirty = () => { channelForm.dataset.dirty = 'true'; };
+        channelForm.addEventListener('input', markDirty);
+        channelForm.addEventListener('change', markDirty);
+        channelForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const f = new FormData(e.target);
+          try {
+            await api('/api/channels/upsert', {method:'POST', body: JSON.stringify({
+              id:String(f.get('id')),
+              name:String(f.get('name')),
+              source_type:String(f.get('source_type')),
+              chat_id:String(f.get('chat_id')),
+              channel_username:String(f.get('channel_username')),
+              enabled:String(f.get('enabled')) === 'true',
+              reconcile_interval_seconds:Number(f.get('reconcile_interval_seconds')),
+              dedup_window_seconds:Number(f.get('dedup_window_seconds')),
+              notes:String(f.get('notes'))
+            })});
+            e.target.reset();
+            setChannelForm(null);
+            await load();
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+      }
       document.querySelectorAll('[data-channel-action]').forEach(button => {
         button.addEventListener('click', async e => {
           const channelId = e.currentTarget.dataset.channelId;
@@ -556,7 +612,7 @@ HTML = """<!doctype html>
       });
     }
     load();
-    setInterval(load, 5000);
+    setInterval(() => { load({background:true}); }, 5000);
   </script>
 </body></html>"""
 

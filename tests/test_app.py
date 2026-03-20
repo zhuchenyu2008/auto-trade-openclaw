@@ -1412,6 +1412,25 @@ class AppTests(unittest.TestCase):
         self.assertEqual(channel["chat_id"], "-1003720752566")
         self.assertEqual(channel["id"], "chan-3720752566")
 
+    def test_channel_upsert_public_web_persists_username_and_ignores_chat_id(self):
+        channel = self.runtime.upsert_channel(
+            {
+                "name": "VIP Public",
+                "source_type": "public_web",
+                "chat_id": "https://t.me/c/3720752566/2080",
+                "channel_username": "https://t.me/s/lbeobhpreo",
+                "enabled": True,
+            }
+        )
+        self.assertEqual(channel["id"], "lbeobhpreo")
+        self.assertEqual(channel["channel_username"], "lbeobhpreo")
+        self.assertEqual(channel["chat_id"], "")
+        payload = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
+        saved = next(item for item in payload["telegram"]["channels"] if item["id"] == "lbeobhpreo")
+        self.assertEqual(saved["source_type"], "public_web")
+        self.assertEqual(saved["channel_username"], "lbeobhpreo")
+        self.assertEqual(saved["chat_id"], "")
+
     def test_operator_topic_link_is_normalized_in_runtime_wiring(self):
         updated = self.runtime.update_config(
             {
@@ -2890,6 +2909,68 @@ class AppTests(unittest.TestCase):
         self.assertIn("requestId !== latestLoadRequestId", body)
         self.assertIn("await load();", body)
 
+    def test_web_homepage_preserves_channel_form_state_during_refresh(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn("function captureChannelFormState()", body)
+        self.assertIn("function restoreChannelFormState(state)", body)
+        self.assertIn("restoreChannelFormState(channelFormState);", body)
+        self.assertIn("channelForm.addEventListener('input', markDirty);", body)
+
+    def test_web_homepage_defers_background_refresh_while_channel_form_is_active(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn("function shouldDeferBackgroundLoad()", body)
+        self.assertIn("if (background && shouldDeferBackgroundLoad()) return;", body)
+        self.assertIn("form.dataset.mode === 'edit' || form.dataset.dirty === 'true'", body)
+        self.assertIn("form.contains(active)", body)
+        self.assertIn("setInterval(() => { load({background:true}); }, 5000);", body)
+
+    def test_web_homepage_channel_submit_button_stays_save_channel(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn('<button id="channelSubmitButton" type="submit">Save Channel</button>', body)
+        self.assertNotIn("Update Channel", body)
+
     def test_web_homepage_channels_section_uses_click_safe_layout(self):
         runtime = Runtime(self.root / "config.json")
         self.addCleanup(runtime.stop)
@@ -3102,6 +3183,122 @@ class AppTests(unittest.TestCase):
         channels = [item["id"] for item in runtime.snapshot()["config"]["telegram"]["channels"]]
         self.assertNotIn("chan-888", channels)
 
+    def test_web_channel_upsert_public_web_persists_and_chat_id_only_is_rejected(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, invalid_payload = controller.route(
+            "POST",
+            "/api/channels/upsert",
+            body=json.dumps(
+                {
+                    "name": "Broken Public",
+                    "source_type": "public_web",
+                    "chat_id": "https://t.me/c/3720752566/2080",
+                    "enabled": True,
+                }
+            ).encode("utf-8"),
+            headers={"Cookie": session_cookie, "Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(
+            invalid_payload["error"],
+            "Channel chan-3720752566 must define channel_username when source_type=public_web",
+        )
+
+        status, _, channel = controller.route(
+            "POST",
+            "/api/channels/upsert",
+            body=json.dumps(
+                {
+                    "name": "VIP Public",
+                    "source_type": "public_web",
+                    "chat_id": "https://t.me/c/3720752566/2080",
+                    "channel_username": "https://t.me/s/lbeobhpreo",
+                    "enabled": True,
+                }
+            ).encode("utf-8"),
+            headers={"Cookie": session_cookie, "Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(channel["id"], "lbeobhpreo")
+        self.assertEqual(channel["channel_username"], "lbeobhpreo")
+        self.assertEqual(channel["chat_id"], "")
+        persisted = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
+        saved = next(item for item in persisted["telegram"]["channels"] if item["id"] == "lbeobhpreo")
+        self.assertEqual(saved["source_type"], "public_web")
+        self.assertEqual(saved["channel_username"], "lbeobhpreo")
+        self.assertEqual(saved["chat_id"], "")
+
+    def test_web_channel_edit_persists_notes_and_records_audit(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, channel = controller.route(
+            "POST",
+            "/api/channels/upsert",
+            body=json.dumps(
+                {
+                    "name": "VIP Public",
+                    "source_type": "public_web",
+                    "channel_username": "https://t.me/s/lbeobhpreo",
+                    "enabled": True,
+                    "notes": "before edit",
+                }
+            ).encode("utf-8"),
+            headers={"Cookie": session_cookie, "Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 201)
+
+        status, _, updated = controller.route(
+            "POST",
+            "/api/channels/upsert",
+            body=json.dumps(
+                {
+                    "id": channel["id"],
+                    "name": channel["name"],
+                    "source_type": channel["source_type"],
+                    "chat_id": channel["chat_id"],
+                    "channel_username": channel["channel_username"],
+                    "enabled": channel["enabled"],
+                    "reconcile_interval_seconds": channel["reconcile_interval_seconds"],
+                    "dedup_window_seconds": channel["dedup_window_seconds"],
+                    "notes": "after edit",
+                }
+            ).encode("utf-8"),
+            headers={"Cookie": session_cookie, "Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(updated["notes"], "after edit")
+
+        snapshot = runtime.public_snapshot()
+        saved = next(item for item in snapshot["config"]["telegram"]["channels"] if item["id"] == channel["id"])
+        self.assertEqual(saved["notes"], "after edit")
+        self.assertIn("Channel upserted", [item["message"] for item in snapshot["audit_logs"]])
+        persisted = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
+        file_channel = next(item for item in persisted["telegram"]["channels"] if item["id"] == channel["id"])
+        self.assertEqual(file_channel["notes"], "after edit")
+
     def test_web_channel_toggle_unknown_id_returns_bad_request(self):
         runtime = Runtime(self.root / "config.json")
         self.addCleanup(runtime.stop)
@@ -3185,9 +3382,9 @@ class AppTests(unittest.TestCase):
                 "--config",
                 str(self.root / "config.json"),
                 "--name",
-                "CLI BTC",
-                "--chat-id",
-                "https://t.me/c/3720752566/2080",
+                "CLI Public",
+                "--channel-username",
+                "https://t.me/s/lbeobhpreo",
             ],
             cwd=repo_root,
             capture_output=True,
@@ -3197,8 +3394,9 @@ class AppTests(unittest.TestCase):
         )
         self.assertEqual(upsert_channel.returncode, 0, msg=upsert_channel.stderr)
         upsert_payload = json.loads(upsert_channel.stdout)
-        self.assertEqual(upsert_payload["channel"]["chat_id"], "-1003720752566")
-        self.assertEqual(upsert_payload["channel"]["id"], "chan-3720752566")
+        self.assertEqual(upsert_payload["channel"]["chat_id"], "")
+        self.assertEqual(upsert_payload["channel"]["channel_username"], "lbeobhpreo")
+        self.assertEqual(upsert_payload["channel"]["id"], "lbeobhpreo")
 
         disable_channel = subprocess.run(
             [
@@ -3209,7 +3407,7 @@ class AppTests(unittest.TestCase):
                 "--config",
                 str(self.root / "config.json"),
                 "--channel-id",
-                "chan-3720752566",
+                "lbeobhpreo",
                 "--disabled",
             ],
             cwd=repo_root,
@@ -3231,7 +3429,7 @@ class AppTests(unittest.TestCase):
                 "--config",
                 str(self.root / "config.json"),
                 "--channel-id",
-                "chan-3720752566",
+                "lbeobhpreo",
             ],
             cwd=repo_root,
             capture_output=True,
@@ -3245,7 +3443,7 @@ class AppTests(unittest.TestCase):
         persisted = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
         self.assertEqual(persisted["telegram"]["operator_target"], "-1003720752566:topic:2080")
         self.assertEqual(persisted["telegram"]["operator_thread_id"], 2080)
-        self.assertFalse(any(item["id"] == "chan-3720752566" for item in persisted["telegram"]["channels"]))
+        self.assertFalse(any(item["id"] == "lbeobhpreo" for item in persisted["telegram"]["channels"]))
 
     def test_cli_runtime_actions_cover_pause_resume_reconcile_topic_close_and_reset(self):
         repo_root = Path(__file__).resolve().parents[1]
