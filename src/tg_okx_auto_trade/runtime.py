@@ -77,6 +77,7 @@ class Runtime:
         Path(config.runtime.data_dir).mkdir(parents=True, exist_ok=True)
         self.storage = Storage(config.runtime.sqlite_path)
         self.storage.upsert_channels([asdict(item) for item in config.telegram.channels])
+        self._persist_runtime_meta_enabled = False
         self.event_stream = EventStream()
         self._health_lock = threading.RLock()
         self._health = self._build_initial_health(config)
@@ -89,13 +90,7 @@ class Runtime:
         self._paused_at = utc_now() if config.trading.paused else ""
         self._last_resume_reason = ""
         self._last_resume_at = ""
-        self._last_reconcile = {
-            "status": "idle",
-            "detail": "Reconciliation has not run yet",
-            "retried_incomplete": 0,
-            "replayed_messages": 0,
-            "updated_at": utc_now(),
-        }
+        self._last_reconcile = self._initial_last_reconcile_state()
         self._watcher_thread: threading.Thread | None = None
         self._reconcile_thread: threading.Thread | None = None
         self._config_thread: threading.Thread | None = None
@@ -110,7 +105,47 @@ class Runtime:
         self._started = False
         self._install_dependencies(config)
         self._restore_execution_state()
+        self._hydrate_persisted_control_state(config)
+        self._persist_runtime_meta_enabled = True
         self._sync_runtime_artifacts()
+
+    def _initial_last_reconcile_state(self) -> dict[str, Any]:
+        return {
+            "status": "idle",
+            "detail": "Reconciliation has not run yet",
+            "retried_incomplete": 0,
+            "replayed_messages": 0,
+            "updated_at": utc_now(),
+        }
+
+    def _persist_operator_state(self) -> None:
+        self.storage.set_runtime_meta(
+            "operator_state",
+            {
+                "pause_reason": self._pause_reason,
+                "paused_at": self._paused_at,
+                "last_resume_reason": self._last_resume_reason,
+                "last_resume_at": self._last_resume_at,
+                "last_reconcile": json.loads(json.dumps(self._last_reconcile)),
+            },
+        )
+
+    def _hydrate_persisted_control_state(self, config: AppConfig) -> None:
+        persisted_operator_state = self.storage.get_runtime_meta("operator_state") or {}
+        self._pause_reason = str(
+            persisted_operator_state.get("pause_reason")
+            or ("Persisted paused state from config" if config.trading.paused else "")
+        )
+        self._paused_at = str(persisted_operator_state.get("paused_at") or (utc_now() if config.trading.paused else ""))
+        self._last_resume_reason = str(persisted_operator_state.get("last_resume_reason") or "")
+        self._last_resume_at = str(persisted_operator_state.get("last_resume_at") or "")
+        persisted_last_reconcile = persisted_operator_state.get("last_reconcile")
+        if isinstance(persisted_last_reconcile, dict) and persisted_last_reconcile.get("status"):
+            self._last_reconcile = json.loads(json.dumps(persisted_last_reconcile))
+        for component in list(self._health):
+            persisted_health = self.storage.get_runtime_meta(f"health:{component}")
+            if isinstance(persisted_health, dict) and persisted_health.get("status"):
+                self._health[component] = json.loads(json.dumps(persisted_health))
 
     def _install_dependencies(self, config: AppConfig) -> None:
         self.ai = OpenClawAI(config)
@@ -1677,6 +1712,7 @@ class Runtime:
             self._last_resume_reason = reason
             self._last_resume_at = utc_now()
             self._refresh_trading_runtime_health(config, detail="Trading is already running")
+            self._persist_operator_state()
             self._sync_runtime_artifacts()
             return
         self.update_config({"trading": {"paused": False}})
@@ -1685,6 +1721,7 @@ class Runtime:
         self._pause_reason = ""
         self._paused_at = ""
         self._refresh_trading_runtime_health(self.config_manager.get(), detail=reason)
+        self._persist_operator_state()
         self.log("info", "risk", reason, {"resumed": True}, audit=True)
         self._send_topic_update(f"[恢复] {reason}")
         self._sync_runtime_artifacts()
@@ -1808,14 +1845,13 @@ class Runtime:
         self.event_stream.clear()
         self.telegram.reset_runtime_state()
         self.okx.reset_local_state()
-        self._last_reconcile = {
-            "status": "idle",
-            "detail": "Reconciliation has not run yet",
-            "retried_incomplete": 0,
-            "replayed_messages": 0,
-            "updated_at": utc_now(),
-        }
+        self._pause_reason = "Persisted paused state from config" if config.trading.paused else ""
+        self._paused_at = utc_now() if config.trading.paused else ""
+        self._last_resume_reason = ""
+        self._last_resume_at = ""
+        self._last_reconcile = self._initial_last_reconcile_state()
         self._restore_execution_state()
+        self._persist_operator_state()
         detail = (
             "Cleared local runtime database, logs, sessions, and locally tracked positions. "
             "This does not cancel exchange orders or flatten any external OKX demo position."
@@ -1998,11 +2034,13 @@ class Runtime:
         self._paused_at = utc_now()
         if config.trading.paused:
             self._refresh_trading_runtime_health(config, detail=reason)
+            self._persist_operator_state()
             self.log("warn", "risk", reason, {"auto_paused": True})
             self._sync_runtime_artifacts()
             return
         self.update_config({"trading": {"paused": True}})
         self._refresh_trading_runtime_health(self.config_manager.get(), detail=reason)
+        self._persist_operator_state()
         self.log("warn", "risk", reason, {"auto_paused": True}, audit=True)
         self._send_topic_update(f"[暂停] {reason}")
         self._sync_runtime_artifacts()
@@ -2034,6 +2072,7 @@ class Runtime:
                 "updated_at": utc_now(),
             }
             self._last_reconcile = summary
+            self._persist_operator_state()
             self._set_health("reconciliation", "skipped", summary["detail"])
             self._sync_runtime_artifacts()
             return summary
@@ -2050,6 +2089,7 @@ class Runtime:
                 "manual": manual,
             }
             self._last_reconcile = summary
+            self._persist_operator_state()
             self._set_health("reconciliation", "warn", summary["detail"])
             self.log("error", "recovery", "Reconciliation failed", {"error": str(exc), "manual": manual})
             self._sync_runtime_artifacts()
@@ -2063,6 +2103,7 @@ class Runtime:
             "manual": manual,
         }
         self._last_reconcile = summary
+        self._persist_operator_state()
         self._set_health("reconciliation", "ok", summary["detail"])
         self._sync_runtime_artifacts()
         return summary
@@ -2190,6 +2231,8 @@ class Runtime:
                 "detail": detail,
                 "updated_at": utc_now(),
             }
+            if self._persist_runtime_meta_enabled:
+                self.storage.set_runtime_meta(f"health:{component}", self._health[component])
 
     def _endpoint_reachability(
         self,

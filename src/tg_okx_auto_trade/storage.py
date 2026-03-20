@@ -85,6 +85,11 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   created_at TEXT NOT NULL,
   last_seen_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS runtime_meta (
+  key TEXT PRIMARY KEY,
+  payload_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 """
 
 
@@ -271,6 +276,28 @@ class Storage:
             )
             return cursor.rowcount > 0
 
+    def set_runtime_meta(self, key: str, payload: dict[str, Any]) -> None:
+        now = utc_now()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO runtime_meta(key, payload_json, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET payload_json=excluded.payload_json, updated_at=excluded.updated_at
+                """,
+                (key, json.dumps(payload, sort_keys=True), now),
+            )
+
+    def get_runtime_meta(self, key: str) -> dict[str, Any] | None:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM runtime_meta WHERE key=?",
+                (key,),
+            ).fetchone()
+        if row is None:
+            return None
+        return json.loads(row["payload_json"])
+
     def log(self, level: str, category: str, message: str, payload: dict[str, Any] | None = None, audit: bool = False) -> None:
         table = "audit_logs" if audit else "system_logs"
         with self._lock, self._connect() as conn:
@@ -399,6 +426,7 @@ class Storage:
             "audit_logs",
             "system_logs",
             "user_sessions",
+            "runtime_meta",
         )
         with self._lock, self._connect() as conn:
             for table in tables:

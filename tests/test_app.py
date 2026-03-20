@@ -2706,6 +2706,40 @@ class AppTests(unittest.TestCase):
         snapshot = self.runtime.snapshot()
         self.assertEqual(len(snapshot["orders"]), 2)
 
+    def test_reconcile_state_persists_across_fresh_runtime_snapshot(self):
+        self.runtime.update_config({"telegram": {"bot_token": "demo-bot-token"}})
+        history = [self._telegram_message(message_id=11, date=100, text="LONG BTCUSDT SIZE 1")]
+        with mock.patch.object(self.runtime.telegram, "_get_chat_history", return_value=history):
+            result = self.runtime.reconcile_now()
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(self.runtime.public_snapshot()["operator_state"]["last_reconcile"]["status"], "ok")
+        self.assertEqual(self.runtime.public_snapshot()["health"]["reconciliation"]["status"], "ok")
+
+        fresh_runtime = Runtime(self.root / "config.json")
+        self.addCleanup(fresh_runtime.stop)
+        snapshot = fresh_runtime.public_snapshot()
+        self.assertEqual(snapshot["operator_state"]["last_reconcile"]["status"], "ok")
+        self.assertEqual(snapshot["operator_state"]["last_reconcile"]["detail"], result["detail"])
+        self.assertEqual(snapshot["health"]["reconciliation"]["status"], "ok")
+        self.assertEqual(snapshot["health"]["reconciliation"]["detail"], result["detail"])
+
+    def test_topic_test_health_persists_across_fresh_runtime_snapshot(self):
+        self.runtime.update_config({"telegram": {"operator_target": "-1003720752566:topic:2080"}})
+        with mock.patch.object(
+            self.runtime.topic_logger,
+            "send",
+            return_value={"sent": False, "status": "disabled", "reason": "mock disabled"},
+        ):
+            result = self.runtime.send_topic_test()
+        self.assertEqual(result["status"], "disabled")
+        self.assertEqual(self.runtime.public_snapshot()["health"]["topic_logger"]["status"], "disabled")
+
+        fresh_runtime = Runtime(self.root / "config.json")
+        self.addCleanup(fresh_runtime.stop)
+        snapshot = fresh_runtime.public_snapshot()
+        self.assertEqual(snapshot["health"]["topic_logger"]["status"], "disabled")
+        self.assertEqual(snapshot["health"]["topic_logger"]["detail"], "mock disabled")
+
     def test_readiness_warns_after_okx_and_topic_failures(self):
         self.runtime.update_config({"telegram": {"operator_target": "-1003720752566:topic:2080"}})
         self.runtime._set_health("okx_rest", "error", "bad credentials")
@@ -3536,6 +3570,26 @@ class AppTests(unittest.TestCase):
         self.assertEqual(reconcile.returncode, 0, msg=reconcile.stderr)
         self.assertEqual(json.loads(reconcile.stdout)["status"], "ok")
 
+        snapshot_after_reconcile = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tg_okx_auto_trade.main",
+                "snapshot",
+                "--config",
+                str(self.root / "config.json"),
+            ],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        self.assertEqual(snapshot_after_reconcile.returncode, 0, msg=snapshot_after_reconcile.stderr)
+        snapshot_payload = json.loads(snapshot_after_reconcile.stdout)
+        self.assertEqual(snapshot_payload["operator_state"]["last_reconcile"]["status"], "ok")
+        self.assertEqual(snapshot_payload["health"]["reconciliation"]["status"], "ok")
+
         topic_test = subprocess.run(
             [
                 sys.executable,
@@ -3554,6 +3608,25 @@ class AppTests(unittest.TestCase):
         self.assertEqual(topic_test.returncode, 0, msg=topic_test.stderr)
         topic_payload = json.loads(topic_test.stdout)
         self.assertEqual(topic_payload["status"], "disabled")
+
+        snapshot_after_topic = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tg_okx_auto_trade.main",
+                "snapshot",
+                "--config",
+                str(self.root / "config.json"),
+            ],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        self.assertEqual(snapshot_after_topic.returncode, 0, msg=snapshot_after_topic.stderr)
+        snapshot_payload = json.loads(snapshot_after_topic.stdout)
+        self.assertEqual(snapshot_payload["health"]["topic_logger"]["status"], "disabled")
 
         close_result = subprocess.run(
             [
