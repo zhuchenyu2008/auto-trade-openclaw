@@ -2317,6 +2317,17 @@ class Runtime:
 def _normalize_channel_payload(payload: dict[str, Any]) -> dict[str, Any]:
     channel_username = normalize_channel_username(payload.get("channel_username", ""))
     chat_id = normalize_chat_id(payload.get("chat_id", ""))
+    source_type = str(payload.get("source_type", "public_web") or "public_web").strip()
+    if source_type == "public_web" and not channel_username:
+        preview_id = (
+            str(payload.get("id", "") or "").strip()
+            or chat_id.replace("-100", "chan-")
+            or str(payload.get("name", "") or "").strip()
+        )
+        channel_id = _slugify_channel_id(preview_id) or "<channel-id>"
+        raise ValueError(
+            f"Channel {channel_id} must define channel_username when source_type=public_web"
+        )
     base_id = (
         str(payload.get("id", "") or "").strip()
         or channel_username
@@ -2326,7 +2337,6 @@ def _normalize_channel_payload(payload: dict[str, Any]) -> dict[str, Any]:
     channel_id = _slugify_channel_id(base_id)
     if not channel_id:
         raise ValueError("Channel id could not be derived; provide id, username, chat_id, or name")
-    source_type = str(payload.get("source_type", "public_web") or "public_web").strip()
     return {
         "id": channel_id,
         "name": str(payload.get("name", "") or channel_username or chat_id or channel_id).strip(),
