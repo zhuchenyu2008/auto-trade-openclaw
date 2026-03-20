@@ -2514,6 +2514,13 @@ class AppTests(unittest.TestCase):
         self.assertIn("direct_use_text", state)
         self.assertIn("TG OKX Auto Trade Direct-Use Summary", state["direct_use_text"])
         self.assertEqual(state["capabilities"]["demo_only_guard"]["status"], "locked")
+        self.assertIn("web_display", state)
+        self.assertIn(state["web_display"]["verification_status"], {"通过", "警告"})
+        self.assertIn("TG OKX Auto Trade 直接使用摘要", state["web_display"]["direct_use_text"])
+        self.assertNotIn("Direct-Use Summary", state["web_display"]["direct_use_text"])
+        self.assertTrue(any("核验本地就绪" in item for item in state["web_display"]["next_steps"]))
+        readiness = {item["name"]: item for item in state["web_display"]["readiness_checks"]}
+        self.assertEqual(readiness["web_auth"]["detail"], "已配置 6 位 Web PIN")
         self.assertIn(DEFAULT_DEMO_SIGNAL_TEXT, state["run_paths"]["inject_demo_signal_command"])
 
         status, _, payload = controller.route(
@@ -2546,6 +2553,101 @@ class AppTests(unittest.TestCase):
         status, _, ready = controller.route("GET", "/readyz")
         self.assertEqual(status, 200)
         self.assertIn(ready["status"], {"ok", "warn"})
+
+    def test_web_display_localizes_remaining_operator_facing_summary_text(self):
+        config_payload = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
+        config_payload["telegram"]["bot_token"] = ""
+        config_payload["telegram"]["channels"] = []
+        config_payload["telegram"]["operator_target"] = "-1003720752566:topic:2080"
+        config_payload["okx"]["enabled"] = False
+        (self.root / "config.json").write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
+
+        with mock.patch.dict(os.environ, {"TG_OKX_DISABLE_TOPIC_SEND": "1"}):
+            runtime = Runtime(self.root / "config.json")
+            self.addCleanup(runtime.stop)
+            runtime.start(background=False)
+            controller = WebController(runtime)
+
+            status, headers, _ = controller.route(
+                "POST",
+                "/login",
+                body=b"pin=123456",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            self.assertEqual(status, 303)
+            session_cookie = headers["Set-Cookie"]
+
+            status, _, state = controller.route("GET", "/api/state", headers={"Cookie": session_cookie})
+            self.assertEqual(status, 200)
+
+        web_display = state["web_display"]
+        readiness = {item["name"]: item for item in web_display["readiness_checks"]}
+        capabilities = {item["name"]: item for item in web_display["capabilities"]}
+        gaps = {item["id"]: item for item in web_display["remaining_gaps"]}
+        localized_text = json.dumps(web_display, ensure_ascii=False)
+
+        self.assertEqual(web_display["direct_use_profile"]["status_label"], "可手动直用")
+        self.assertEqual(web_display["overview"]["runtime_detail"], "交易链路运行中")
+        self.assertEqual(readiness["trading_runtime"]["detail"], "交易链路运行中")
+        self.assertEqual(readiness["simulated_positions"]["detail"], "已恢复 0 份模拟持仓快照")
+        self.assertIn("Web 登录、配置持久化、运行时状态和手动演示注入链路均已就绪", capabilities["manual_demo_pipeline"]["detail"])
+        self.assertIn("如需执行真实操作员话题冒烟测试", capabilities["operator_topic"]["action"])
+        self.assertIn("操作员话题出站发送已被", gaps["operator_topic_outbound"]["detail"])
+        self.assertIn("若要期待操作员话题冒烟日志或运行时广播", gaps["operator_topic_outbound"]["action"])
+        self.assertTrue(any("安全冒烟" in item for item in web_display["activation_checklist"]))
+        self.assertTrue(any("操作员话题冒烟" in item for item in web_display["activation_checklist"]))
+        self.assertIn("OKX 网关已就绪", web_display["health_json"])
+        self.assertNotIn("OKX gateway ready", web_display["health_json"])
+        self.assertEqual(web_display["overview"]["topic_target_source"], "操作员目标配置")
+        self.assertIn("启用自动采集前，请替换成真实的 Telegram 公共网页地址。", web_display["setup_examples_json"])
+        self.assertNotIn("Replace with the real public Telegram webpage", web_display["setup_examples_json"])
+        self.assertNotIn("Trading pipeline is active", localized_text)
+        self.assertNotIn("Web login, config persistence", localized_text)
+        self.assertNotIn("Outbound operator-topic delivery is disabled", localized_text)
+        self.assertNotIn("Web: open", localized_text)
+
+    def test_web_display_localizes_remaining_okx_and_operator_topic_residues(self):
+        config_payload = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
+        config_payload["telegram"]["bot_token"] = ""
+        config_payload["telegram"]["channels"] = []
+        config_payload["telegram"]["operator_target"] = "-1003720752566:topic:2080"
+        config_payload["okx"]["enabled"] = True
+        config_payload["okx"]["api_key"] = "api-key"
+        config_payload["okx"]["api_secret"] = "api-secret"
+        config_payload["okx"]["passphrase"] = "passphrase"
+        (self.root / "config.json").write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
+
+        with mock.patch("tg_okx_auto_trade.runtime.shutil.which", return_value="/usr/bin/openclaw"):
+            runtime = Runtime(self.root / "config.json")
+            self.addCleanup(runtime.stop)
+            runtime.start(background=False)
+            controller = WebController(runtime)
+
+            status, headers, _ = controller.route(
+                "POST",
+                "/login",
+                body=b"pin=123456",
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            self.assertEqual(status, 303)
+            session_cookie = headers["Set-Cookie"]
+
+            status, _, state = controller.route("GET", "/api/state", headers={"Cookie": session_cookie})
+            self.assertEqual(status, 200)
+
+        web_display = state["web_display"]
+        capabilities = {item["name"]: item for item in web_display["capabilities"]}
+        next_steps = "\n".join(web_display["next_steps"])
+        localized_text = json.dumps(web_display, ensure_ascii=False)
+
+        self.assertIn("已为 -1003720752566:topic:2080 配置操作员话题出站发送，但当前运行时还没有验证成功发送。", capabilities["operator_topic"]["detail"])
+        self.assertIn("当前主支持的操作员流程是出站话题日志配合 Web/本地操作控制", capabilities["operator_topic"]["detail"])
+        self.assertIn("当前已配置的 OKX 执行仅使用 OKX Demo REST 路径", next_steps)
+        self.assertIn("交易链路运行中", web_display["health_json"])
+        self.assertNotIn("Operator topic outbound delivery is configured for", localized_text)
+        self.assertNotIn("Configured OKX execution uses the OKX demo REST path only", localized_text)
+        self.assertNotIn("Trading pipeline is active", localized_text)
+        self.assertNotIn("The intended operator flow is outbound topic logging plus Web/local operator controls", localized_text)
 
     def test_web_inject_endpoint_can_opt_into_real_okx_demo_path(self):
         config_payload = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
@@ -2943,6 +3045,44 @@ class AppTests(unittest.TestCase):
         self.assertIn("requestId !== latestLoadRequestId", body)
         self.assertIn("await load();", body)
 
+    def test_web_homepage_operator_labels_are_substantially_chinese(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, login_body = controller.route("GET", "/login")
+        self.assertEqual(status, 200)
+        self.assertIn("<h2>6 位 PIN</h2>", login_body)
+        self.assertIn("<button>登录</button>", login_body)
+
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn("<h2>控制总览</h2>", body)
+        self.assertIn("<h2>激活摘要</h2>", body)
+        self.assertIn("<h2>能力摘要</h2>", body)
+        self.assertIn("<h2>下一步</h2>", body)
+        self.assertIn("displayTradingMode(data.config.trading.mode)", body)
+        self.assertIn("displayBool(data.config.trading.global_tp_sl_enabled)", body)
+        self.assertIn(">观察模式</option>", body)
+        self.assertIn(">自动执行</option>", body)
+        self.assertIn('<button id="channelSubmitButton" type="submit">保存频道</button>', body)
+        self.assertNotIn("data.config.trading.mode + ' / ' + data.config.trading.execution_mode", body)
+        self.assertNotIn("Current Profile", body)
+        self.assertNotIn("Verification", body)
+        self.assertNotIn("Remaining Gaps", body)
+        self.assertNotIn("Activation Summary", body)
+        self.assertNotIn("Capabilities", body)
+        self.assertNotIn("Next Steps", body)
+
     def test_web_homepage_preserves_channel_form_state_during_refresh(self):
         runtime = Runtime(self.root / "config.json")
         self.addCleanup(runtime.stop)
@@ -3002,7 +3142,7 @@ class AppTests(unittest.TestCase):
 
         status, _, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
         self.assertEqual(status, 200)
-        self.assertIn('<button id="channelSubmitButton" type="submit">Save Channel</button>', body)
+        self.assertIn('<button id="channelSubmitButton" type="submit">保存频道</button>', body)
         self.assertNotIn("Update Channel", body)
 
     def test_web_homepage_channels_section_uses_click_safe_layout(self):
@@ -3022,7 +3162,7 @@ class AppTests(unittest.TestCase):
         status, _, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
         self.assertEqual(status, 200)
         self.assertIn('.card--channels{grid-column:1/-1;min-width:0}', body)
-        self.assertIn('<section class="card card--channels"><h2>Channels</h2>', body)
+        self.assertIn('<section class="card card--channels"><h2>频道配置</h2>', body)
         self.assertIn('<div class="table-scroll"><table class="channel-table">', body)
         self.assertIn('class="channel-actions"', body)
         self.assertIn('data-channel-action="toggle"', body)
