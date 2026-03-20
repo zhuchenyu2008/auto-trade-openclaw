@@ -323,6 +323,15 @@ python3 scripts/verify_demo.py --config config.demo.local.json
 This checks the checked-in `config.demo.local.json` wiring and redaction paths, then runs a separate safe local simulated smoke clone so it never places a real OKX demo order during the generic verify step.
 It also verifies that the checked-in demo profile writes fresh runtime artifacts under `runtime/demo-local/`, including `direct-use.json`, `direct-use.txt`, and `public-state.json`.
 
+M3 operator prep:
+
+```bash
+python3 scripts/m3_acceptance_prep.py --config config.demo.local.json --format markdown > runtime/demo-local/m3-acceptance-prep.md
+```
+
+This is a repo-side readiness helper only. It does not perform Telegram or OKX validation. It saves the exact manual `M3` sequence, runtime artifact paths, redacted credential-presence status, evidence checks, and claim boundaries for the main-session credentialed demo run.
+The operator handoff is documented in `docs/telegram-okx-openclaw-m3-acceptance-runbook.md`.
+
 Web/controller/runtime smoke:
 
 ```bash

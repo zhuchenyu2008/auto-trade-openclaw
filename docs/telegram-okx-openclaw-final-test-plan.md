@@ -28,6 +28,8 @@ Passing this gate does not authorize live trading.
 
 The repo is only acceptable as a directly usable demo-only release when all items below are true.
 
+`docs/telegram-okx-openclaw-m3-acceptance-runbook.md` is the operator handoff for the `M3` run. It prepares the repo-side evidence flow, but it does not satisfy `M3` on its own.
+
 ### 3.1 Mandatory Green Gates
 
 1. `M0`, `M1`, `M2`, and `M3` are all complete.
@@ -73,6 +75,14 @@ The acceptance package must include:
 - screenshots or exported JSON from Web state only if they add evidence not already present in runtime artifacts
 - credentialed demo evidence showing topic target used, public channel checked, and OKX demo order ids
 
+Recommended repo-side capture sequence before the credentialed run:
+
+```bash
+python3 scripts/m3_acceptance_prep.py --config config.demo.local.json --format markdown > runtime/demo-local/m3-acceptance-prep.md
+python3 -m tg_okx_auto_trade.main verify --config config.demo.local.json > runtime/demo-local/m3-verify-before.json
+python3 -m tg_okx_auto_trade.main direct-use --config config.demo.local.json --json > runtime/demo-local/m3-direct-use-before.json
+```
+
 ## 4. Non-Negotiable Blockers
 
 Any of the following blocks release:
@@ -95,5 +105,6 @@ Reasons:
 
 ## 6. Recommended Next Sequence
 
-1. Run `M3` only in an operator-owned demo environment with outbound network, OpenClaw access, and OKX demo credentials.
-2. Re-evaluate this final gate only after those artifacts exist.
+1. Run `python3 scripts/m3_acceptance_prep.py --config config.demo.local.json --format markdown > runtime/demo-local/m3-acceptance-prep.md`.
+2. Follow `docs/telegram-okx-openclaw-m3-acceptance-runbook.md` in an operator-owned demo environment with outbound network, OpenClaw access, and OKX demo credentials.
+3. Re-evaluate this final gate only after those credentialed artifacts exist.

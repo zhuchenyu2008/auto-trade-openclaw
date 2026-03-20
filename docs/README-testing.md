@@ -9,6 +9,7 @@ Read them in this order:
 3. `docs/telegram-okx-openclaw-fixture-spec.md`
 4. `docs/telegram-okx-openclaw-coverage-matrix.md`
 5. `docs/telegram-okx-openclaw-final-test-plan.md`
+6. `docs/telegram-okx-openclaw-m3-acceptance-runbook.md` for the operator-owned credentialed demo handoff
 
 Current repo-local execution assets:
 
@@ -22,6 +23,7 @@ Current repo-local execution assets:
 - `scripts/smoke_telegram.py`
 - `scripts/smoke_http_server.py`
 - `scripts/smoke_okx_demo.py`
+- `scripts/m3_acceptance_prep.py`
 
 Scope note:
 

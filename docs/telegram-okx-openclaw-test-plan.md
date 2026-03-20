@@ -88,6 +88,8 @@ Current executable assets already present in the repo:
   - real local HTTP server smoke
 - `scripts/smoke_okx_demo.py`
   - credentialed OKX demo smoke, with skip behavior when network is blocked
+- `scripts/m3_acceptance_prep.py`
+  - repo-side `M3` prep helper that prints the manual credentialed-run sequence and evidence checklist without performing external validation
 
 ## 5. Test Environments
 
@@ -189,6 +191,8 @@ Preferred evidence locations:
 - JSON output from smoke scripts
 - runtime artifacts under `runtime/.../direct-use.json`, `direct-use.txt`, `public-state.json`
 - saved fixture result reports once the fixture harness is implemented
+
+For the credentialed handoff, `scripts/m3_acceptance_prep.py` plus `docs/telegram-okx-openclaw-m3-acceptance-runbook.md` define the repo-side preflight capture and the exact manual `M3` sequence. They prepare evidence collection only; they do not satisfy `M3`.
 
 ## 9. Repo-Local Status At M2 Completion
 
