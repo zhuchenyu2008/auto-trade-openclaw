@@ -100,6 +100,8 @@ class Runtime:
             self.log,
             self._update_telegram_health,
             self.process_operator_message,
+            self._load_public_web_runtime_state,
+            self._save_public_web_runtime_state,
         )
         self.okx = OKXGateway(config)
         self._started = False
@@ -287,9 +289,16 @@ class Runtime:
         self.storage.save_risk_check(risk.idempotency_key, risk.approved, risk.code, risk.reason, risk.intent.to_dict())
         self.storage.update_message_status(message.chat_id, message.message_id, message.version, "RISK_CHECKED")
         if not risk.approved:
-            self.storage.update_message_status(message.chat_id, message.message_id, message.version, "RISK_REJECTED")
-            self.log("warn", "risk", risk.reason, {"code": risk.code, "idempotency_key": risk.idempotency_key})
-            self._send_topic_update(f"[risk] {risk.code}: {risk.reason}")
+            status = self._message_status_for_risk_result(risk.code)
+            self.storage.update_message_status(message.chat_id, message.message_id, message.version, status)
+            log_level = "info" if status in {"IGNORED", "MANAGEMENT_SKIPPED"} else "warn"
+            self.log(log_level, "risk", risk.reason, {"code": risk.code, "idempotency_key": risk.idempotency_key})
+            if status == "MANAGEMENT_SKIPPED":
+                self._send_topic_update(f"[管理消息] 已识别为管理/保护更新，当前不按新开仓执行：{risk.reason}")
+            elif status == "IGNORED":
+                self._send_topic_update(f"[忽略] {risk.reason}")
+            else:
+                self._send_topic_update(f"[risk] {risk.code}: {risk.reason}")
             return
         if self._is_observe_only(config):
             self.storage.save_order(
@@ -390,6 +399,19 @@ class Runtime:
             self.log("warn", "telegram", "Topic update failed", result)
             return
         self._set_health("topic_logger", "idle", self._topic_target_detail())
+
+    def _load_public_web_runtime_state(self) -> dict[str, Any] | None:
+        return self.storage.get_runtime_meta("telegram:public_web_state")
+
+    def _save_public_web_runtime_state(self, payload: dict[str, Any]) -> None:
+        self.storage.set_runtime_meta("telegram:public_web_state", payload)
+
+    def _message_status_for_risk_result(self, risk_code: str) -> str:
+        if risk_code == "management_update":
+            return "MANAGEMENT_SKIPPED"
+        if risk_code == "ignored_signal":
+            return "IGNORED"
+        return "RISK_REJECTED"
 
     def log(self, level: str, category: str, message: str, payload: dict[str, Any] | None = None, audit: bool = False) -> None:
         self.storage.log(level, category, message, payload, audit=audit)

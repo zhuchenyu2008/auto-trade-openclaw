@@ -20,16 +20,22 @@ class TelegramWatcher:
         logger,
         health_callback: Callable[[str, str], None] | None = None,
         operator_callback: Callable[[NormalizedMessage], None] | None = None,
+        public_web_state_loader: Callable[[], dict[str, Any] | None] | None = None,
+        public_web_state_saver: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.config_getter = config_getter
         self.logger = logger
         self.health_callback = health_callback
         self.operator_callback = operator_callback
+        self.public_web_state_loader = public_web_state_loader
+        self.public_web_state_saver = public_web_state_saver
         self.stop_event = threading.Event()
         self.offset = 0
         self._recent_messages: list[dict[str, Any]] = []
         self._message_versions: dict[tuple[str, int], dict[str, int]] = {}
         self._public_web_state: dict[tuple[str, int], dict[str, Any]] = {}
+        self._public_web_channels: dict[str, dict[str, Any]] = {}
+        self._load_public_web_state()
 
     def run_forever(self, callback: Callable[[NormalizedMessage], None]) -> None:
         self.stop_event.clear()
@@ -79,6 +85,8 @@ class TelegramWatcher:
         self._recent_messages = []
         self._message_versions = {}
         self._public_web_state = {}
+        self._public_web_channels = {}
+        self._persist_public_web_state()
 
     def reconcile_once(self, callback: Callable[[NormalizedMessage], None]) -> int:
         config = self.config_getter()
@@ -224,7 +232,10 @@ class TelegramWatcher:
         emitted = 0
         for channel in channels:
             html = self._get_public_channel_html(channel.channel_username)
-            for post in parse_public_channel_html(channel.channel_username, html):
+            posts = parse_public_channel_html(channel.channel_username, html)
+            if self._bootstrap_public_web_channel(channel, posts):
+                continue
+            for post in posts:
                 normalized = self._normalize_public_web_post(channel, post)
                 if normalized is None:
                     continue
@@ -246,10 +257,20 @@ class TelegramWatcher:
         )
         state = self._public_web_state.get(key)
         if state is None:
+            channel_state = self._public_web_channels.get(channel.id, {})
+            highest_message_id = int(channel_state.get("highest_message_id") or 0)
             self._public_web_state[key] = {
                 "semantic_hash": current.semantic_hash,
                 "version": 1,
             }
+            self._public_web_channels[channel.id] = {
+                "bootstrapped": True,
+                "highest_message_id": max(highest_message_id, int(post["message_id"])),
+                "updated_at": utc_now(),
+            }
+            self._persist_public_web_state()
+            if highest_message_id and int(post["message_id"]) <= highest_message_id:
+                return None
             if channel.listen_new_messages:
                 self._remember_message(
                     channel,
@@ -273,6 +294,12 @@ class TelegramWatcher:
             "semantic_hash": current.semantic_hash,
             "version": version,
         }
+        self._public_web_channels[channel.id] = {
+            "bootstrapped": True,
+            "highest_message_id": max(int(self._public_web_channels.get(channel.id, {}).get("highest_message_id") or 0), int(post["message_id"])),
+            "updated_at": utc_now(),
+        }
+        self._persist_public_web_state()
         if not channel.listen_edits:
             return None
         updated = NormalizedMessage.from_public_web(
@@ -309,6 +336,94 @@ class TelegramWatcher:
         )
         with urllib.request.urlopen(request, timeout=20) as response:
             return response.read().decode("utf-8")
+
+    def _bootstrap_public_web_channel(self, channel: ChannelConfig, posts: list[dict[str, Any]]) -> bool:
+        channel_state = self._public_web_channels.get(channel.id)
+        if channel_state and channel_state.get("bootstrapped"):
+            return False
+        highest_message_id = 0
+        for post in posts:
+            message_id = int(post["message_id"])
+            highest_message_id = max(highest_message_id, message_id)
+            normalized = NormalizedMessage.from_public_web(
+                channel.channel_username,
+                "new",
+                post,
+                version=1,
+            )
+            self._public_web_state[(channel.id, message_id)] = {
+                "semantic_hash": normalized.semantic_hash,
+                "version": 1,
+            }
+        self._public_web_channels[channel.id] = {
+            "bootstrapped": True,
+            "highest_message_id": highest_message_id,
+            "updated_at": utc_now(),
+        }
+        self._persist_public_web_state()
+        if posts:
+            self.logger(
+                "info",
+                "telegram",
+                "Bootstrapped public_web channel baseline without replaying visible history",
+                {
+                    "channel_id": channel.id,
+                    "channel_username": channel.channel_username,
+                    "visible_posts": len(posts),
+                    "highest_message_id": highest_message_id,
+                },
+            )
+        return True
+
+    def _load_public_web_state(self) -> None:
+        if self.public_web_state_loader is None:
+            return
+        payload = self.public_web_state_loader() or {}
+        messages = payload.get("messages")
+        channels = payload.get("channels")
+        if isinstance(messages, dict):
+            for raw_key, state in messages.items():
+                if not isinstance(raw_key, str) or not isinstance(state, dict):
+                    continue
+                channel_id, _, raw_message_id = raw_key.partition(":")
+                if not channel_id or not raw_message_id.isdigit():
+                    continue
+                self._public_web_state[(channel_id, int(raw_message_id))] = {
+                    "semantic_hash": str(state.get("semantic_hash") or ""),
+                    "version": int(state.get("version") or 1),
+                }
+        if isinstance(channels, dict):
+            for channel_id, state in channels.items():
+                if not isinstance(state, dict):
+                    continue
+                self._public_web_channels[str(channel_id)] = {
+                    "bootstrapped": bool(state.get("bootstrapped")),
+                    "highest_message_id": int(state.get("highest_message_id") or 0),
+                    "updated_at": str(state.get("updated_at") or ""),
+                }
+
+    def _persist_public_web_state(self) -> None:
+        if self.public_web_state_saver is None:
+            return
+        self.public_web_state_saver(
+            {
+                "messages": {
+                    f"{channel_id}:{message_id}": {
+                        "semantic_hash": state.get("semantic_hash", ""),
+                        "version": int(state.get("version") or 1),
+                    }
+                    for (channel_id, message_id), state in sorted(self._public_web_state.items())
+                },
+                "channels": {
+                    channel_id: {
+                        "bootstrapped": bool(state.get("bootstrapped")),
+                        "highest_message_id": int(state.get("highest_message_id") or 0),
+                        "updated_at": str(state.get("updated_at") or ""),
+                    }
+                    for channel_id, state in sorted(self._public_web_channels.items())
+                },
+            }
+        )
 
 
 class _PublicChannelHTMLParser(HTMLParser):

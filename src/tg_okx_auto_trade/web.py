@@ -150,7 +150,7 @@ def _render_app_html(initial_view: str = "overview") -> str:
       return pickLabel({
         filled:'已成交', observed:'仅观察', submitted:'已提交', canceled:'已撤销', rejected:'已拒绝', failed:'失败',
         pending:'处理中', ignored:'已忽略', open:'进行中', closed:'已关闭', EXECUTED:'已执行', OBSERVED:'仅观察',
-        EXECUTION_FAILED:'执行失败', RISK_REJECTED:'风控拒绝', IGNORED:'已忽略', ERROR:'错误',
+        EXECUTION_FAILED:'执行失败', RISK_REJECTED:'风控拒绝', IGNORED:'已忽略', MANAGEMENT_SKIPPED:'管理消息已跳过', ERROR:'错误',
       }, value);
     }
     function getCurrentView() {

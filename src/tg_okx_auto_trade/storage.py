@@ -328,7 +328,7 @@ class Storage:
             return [self._decoded_row(row) for row in rows]
 
     def incomplete_messages(self, limit: int = 20) -> list[dict[str, Any]]:
-        terminal_statuses = ("EXECUTED", "OBSERVED", "RISK_REJECTED")
+        terminal_statuses = ("EXECUTED", "OBSERVED", "RISK_REJECTED", "IGNORED", "MANAGEMENT_SKIPPED")
         placeholders = ", ".join("?" for _ in terminal_statuses)
         with self._lock, self._connect() as conn:
             rows = conn.execute(

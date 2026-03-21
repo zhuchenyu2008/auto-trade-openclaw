@@ -1313,6 +1313,77 @@ class AppTests(unittest.TestCase):
         self.assertEqual(normalized_edit.text, "LONG BTCUSDT\nEntry updated")
         self.assertIsNotNone(normalized_edit.edit_date)
 
+    def test_public_web_first_poll_bootstraps_visible_history_without_replay(self):
+        self.runtime.update_config({"telegram": {"channels": [self._public_web_channel()]}})
+        channel = self.runtime.config_manager.get().telegram.channels[0]
+        watcher = self.runtime.telegram
+        first_html = """
+        <div class="tgme_widget_message" data-post="lbeobhpreo/101">
+          <div class="tgme_widget_message_text">LONG BTCUSDT</div>
+          <div class="tgme_widget_message_date"><time datetime="2026-03-18T12:34:56+00:00"></time></div>
+        </div>
+        <div class="tgme_widget_message" data-post="lbeobhpreo/102">
+          <div class="tgme_widget_message_text">SHORT ETHUSDT</div>
+          <div class="tgme_widget_message_date"><time datetime="2026-03-18T12:35:56+00:00"></time></div>
+        </div>
+        """
+        later_html = """
+        <div class="tgme_widget_message" data-post="lbeobhpreo/101">
+          <div class="tgme_widget_message_text">LONG BTCUSDT</div>
+          <div class="tgme_widget_message_date"><time datetime="2026-03-18T12:34:56+00:00"></time></div>
+        </div>
+        <div class="tgme_widget_message" data-post="lbeobhpreo/102">
+          <div class="tgme_widget_message_text">SHORT ETHUSDT</div>
+          <div class="tgme_widget_message_date"><time datetime="2026-03-18T12:35:56+00:00"></time></div>
+        </div>
+        <div class="tgme_widget_message" data-post="lbeobhpreo/103">
+          <div class="tgme_widget_message_text">LONG SOLUSDT</div>
+          <div class="tgme_widget_message_date"><time datetime="2026-03-18T12:36:56+00:00"></time></div>
+        </div>
+        """
+        callback = mock.Mock()
+
+        with mock.patch.object(watcher, "_get_public_channel_html", return_value=first_html):
+            emitted = watcher._poll_public_web_channels([channel], callback)
+        self.assertEqual(emitted, 0)
+        callback.assert_not_called()
+
+        with mock.patch.object(watcher, "_get_public_channel_html", return_value=later_html):
+            emitted = watcher._poll_public_web_channels([channel], callback)
+        self.assertEqual(emitted, 1)
+        callback.assert_called_once()
+        emitted_message = callback.call_args[0][0]
+        self.assertEqual(emitted_message.message_id, 103)
+        self.assertEqual(emitted_message.event_type, "new")
+
+    def test_public_web_restart_reuses_persisted_baseline_without_replaying_visible_posts(self):
+        self.runtime.update_config({"telegram": {"channels": [self._public_web_channel()]}})
+        channel = self.runtime.config_manager.get().telegram.channels[0]
+        html = """
+        <div class="tgme_widget_message" data-post="lbeobhpreo/101">
+          <div class="tgme_widget_message_text">LONG BTCUSDT</div>
+          <div class="tgme_widget_message_date"><time datetime="2026-03-18T12:34:56+00:00"></time></div>
+        </div>
+        """
+        with mock.patch.object(self.runtime.telegram, "_get_public_channel_html", return_value=html):
+            emitted = self.runtime.telegram._poll_public_web_channels([channel], mock.Mock())
+        self.assertEqual(emitted, 0)
+
+        fresh_runtime = Runtime(self.root / "config.json")
+        self.addCleanup(fresh_runtime.stop)
+        fresh_channel = fresh_runtime.config_manager.get().telegram.channels[0]
+        callback = mock.Mock()
+        with mock.patch.object(fresh_runtime.telegram, "_get_public_channel_html", return_value=html):
+            emitted = fresh_runtime.telegram._poll_public_web_channels([fresh_channel], callback)
+        self.assertEqual(emitted, 0)
+        callback.assert_not_called()
+
+    def test_management_message_status_is_not_risk_rejected(self):
+        self.runtime.process_message(self._message("BTCUSDT 止盈：74500"))
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "MANAGEMENT_SKIPPED")
+        self.assertEqual(snapshot["orders"], [])
+
     def test_telegram_watcher_reports_connected_health_for_public_web_without_bot_token(self):
         self.runtime.update_config({"telegram": {"bot_token": "", "channels": [self._public_web_channel()]}})
         health_events = []

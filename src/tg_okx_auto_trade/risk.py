@@ -63,6 +63,16 @@ class RiskEngine:
             return RiskResult(False, "Live mode is disabled for this build", "live_disabled", intent, idempotency_key)
         if intent.action not in VALID_ACTIONS:
             return RiskResult(False, "Invalid action", "invalid_action", intent, idempotency_key)
+        if self._is_management_message(message, intent):
+            return RiskResult(
+                False,
+                "Management/update message recognized; skipped as a fresh trade entry",
+                "management_update",
+                intent,
+                idempotency_key,
+            )
+        if not intent.executable or intent.action == "ignore":
+            return RiskResult(False, "Signal ignored as non-executable", "ignored_signal", intent, idempotency_key)
         if not intent.symbol.endswith(("-SWAP", "-FUTURES")) and "-SWAP" not in intent.symbol and "-FUTURES" not in intent.symbol:
             return RiskResult(False, "Contracts only: swap/futures symbols required", "invalid_symbol", intent, idempotency_key)
         if not (1 <= intent.leverage <= 125):
@@ -86,8 +96,6 @@ class RiskEngine:
             return RiskResult(False, "Close-only mode active", "close_only", intent, idempotency_key)
         if intent.require_manual_confirmation or self.config.trading.execution_mode == "semi_automatic":
             return RiskResult(False, "Manual confirmation required", "manual_confirmation", intent, idempotency_key)
-        if not intent.executable or intent.action == "ignore":
-            return RiskResult(False, "Signal not executable", "not_executable", intent, idempotency_key)
         return RiskResult(True, "Approved", "approved", intent, idempotency_key)
 
     def _idempotency_key(self, message: NormalizedMessage, intent: TradingIntent) -> str:
@@ -101,3 +109,19 @@ class RiskEngine:
             "intent_hash": intent.action_hash(),
         }
         return hashlib.sha256(json.dumps(body, sort_keys=True).encode("utf-8")).hexdigest()
+
+    def _is_management_message(self, message: NormalizedMessage, intent: TradingIntent) -> bool:
+        if intent.action == "update_protection":
+            return True
+        content = message.content_text().upper()
+        if any(keyword in content for keyword in ("止盈", "止损", "保本", "保护", "调保护", "减仓", "平一半", "PARTIAL", "BREAKEVEN")):
+            return True
+        combined_reason = " ".join(
+            str(item or "")
+            for item in (
+                intent.reason,
+                intent.raw.get("reason") if isinstance(intent.raw, dict) else "",
+                intent.raw.get("provider_error") if isinstance(intent.raw, dict) else "",
+            )
+        ).lower()
+        return any(keyword in combined_reason for keyword in ("management", "update message", "protection update"))
