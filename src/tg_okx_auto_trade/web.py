@@ -70,6 +70,11 @@ def _render_app_html(initial_view: str = "overview") -> str:
     .field span{font-size:13px;font-weight:600;color:var(--muted);line-height:1.35}
     .field--full{grid-column:1/-1}
     .form-section{display:grid;gap:14px;padding:16px;border:1px solid #efe2d3;border-radius:16px;background:#fffaf3}
+    .subsection{display:grid;gap:12px;padding:14px;border:1px solid #f0e1d0;border-radius:14px;background:#fff}
+    .subsection h3{margin:0}
+    .hint-list{display:grid;gap:8px;margin:0;padding-left:18px;color:var(--muted)}
+    .meta-list{display:grid;gap:10px}
+    .meta-item{padding:12px;border-radius:12px;background:#fff8ef;border:1px solid #f0e1d0}
     .button-row{display:flex;flex-wrap:wrap;gap:12px}
     .button-row button{flex:1 1 180px}
     .split-panel{display:grid;gap:16px;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr)}
@@ -173,6 +178,7 @@ def _render_app_html(initial_view: str = "overview") -> str:
     function displayExecutionMode(value) { return pickLabel({automatic:'自动执行', observe:'仅观察'}, value); }
     function displayThinking(value) { return pickLabel({off:'关闭', minimal:'极低', low:'低', medium:'中', high:'高', custom:'自定义'}, value); }
     function displayBool(value) { return String(value) === 'true' ? '是' : '否'; }
+    function displaySecretSource(value) { return pickLabel({config:'配置文件', env:'本地环境变量', missing:'未配置'}, value, '未配置'); }
     function displaySourceType(value) { return pickLabel({public_web:'public_web', bot_api:'bot_api（遗留）', mtproto:'mtproto（未实现）'}, value); }
     function displayPositionSide(value) { return pickLabel({long:'多', short:'空'}, value); }
     function displayEventType(value) { return pickLabel({new:'新增', edit:'编辑', delete:'删除'}, value); }
@@ -334,6 +340,14 @@ def _render_app_html(initial_view: str = "overview") -> str:
     }
     function renderSettingsView(ctx) {
       const data = ctx.data;
+      const okxCredentialSource = data.secret_sources.okx_demo_credentials || 'missing';
+      const okxCredentialsConfigured = !!data.secret_status.okx_demo_credentials_configured;
+      const okxSourceDetail = okxCredentialSource === 'env'
+        ? ('当前实际从本地环境变量读取，变量名分别是 ' + data.config.okx.api_key_env + ' / ' + data.config.okx.api_secret_env + ' / ' + data.config.okx.passphrase_env + '。')
+        : (okxCredentialSource === 'config'
+          ? '当前凭证来自配置文件中的历史内联值；Web 端不会回显明文，建议迁移到本地 .env。'
+          : '当前还没有可用的 OKX Demo 凭证。');
+      const aiProviderHint = data.config.ai.provider === 'openclaw' ? '当前会使用 OpenClaw Agent。' : '当前不走 OpenClaw Agent。';
       return `
         <section class="card"><h2>交易配置</h2>
           <form id="modeForm">
@@ -362,33 +376,141 @@ def _render_app_html(initial_view: str = "overview") -> str:
             <button>保存交易配置</button>
           </form>
         </section>
-        <section class="card"><h2>AI 配置</h2>
+        <section class="card card--wide"><h2>OKX 配置</h2>
+          <div class="meta-list">
+            <div class="meta-item"><strong>当前执行入口</strong><div>${esc(data.wiring.okx_execution_path === 'real_demo_rest' ? '已配置 OKX Demo REST' : '模拟执行') }</div><div class="muted">${esc(okxSourceDetail)}</div></div>
+            <div class="meta-item"><strong>当前凭证状态</strong><div>${esc(okxCredentialsConfigured ? '已配置' : '未配置')} / ${esc(displaySecretSource(okxCredentialSource))}</div><div class="muted">本地 .env 路径：${esc(data.run_paths.local_env_path || '未提供')}</div></div>
+          </div>
+          <form id="okxSettingsForm">
+            <div class="form-section">
+              <div class="subsection">
+                <h3>基础开关</h3>
+                <div class="field-grid">
+                  <label class="field">
+                    <span>启用 OKX Demo 执行</span>
+                    <select name="enabled"><option value="false" ${!data.config.okx.enabled?'selected':''}>关闭，继续只走模拟</option><option value="true" ${data.config.okx.enabled?'selected':''}>启用，允许走已配置 OKX Demo</option></select>
+                  </label>
+                  <label class="field">
+                    <span>Demo 环境</span>
+                    <select name="use_demo"><option value="true" ${data.config.okx.use_demo?'selected':''}>固定使用 Demo</option><option value="false" ${!data.config.okx.use_demo?'selected':''}>关闭（当前构建会拒绝）</option></select>
+                  </label>
+                </div>
+                <div class="field-grid">
+                  <label class="field">
+                    <span>REST Base</span>
+                    <input name="rest_base" value="${esc(data.config.okx.rest_base)}" placeholder="https://www.okx.com">
+                  </label>
+                  <label class="field">
+                    <span>私有 WebSocket</span>
+                    <input name="ws_private_url" value="${esc(data.config.okx.ws_private_url)}" placeholder="wss://ws.okx.com:8443/ws/v5/private">
+                  </label>
+                </div>
+              </div>
+              <div class="subsection">
+                <h3>凭证变量名</h3>
+                <div class="field-grid">
+                  <label class="field">
+                    <span>api_key_env</span>
+                    <input name="api_key_env" value="${esc(data.config.okx.api_key_env)}" placeholder="TG_OKX_OKX_API_KEY">
+                  </label>
+                  <label class="field">
+                    <span>api_secret_env</span>
+                    <input name="api_secret_env" value="${esc(data.config.okx.api_secret_env)}" placeholder="TG_OKX_OKX_API_SECRET">
+                  </label>
+                </div>
+                <label class="field">
+                  <span>passphrase_env</span>
+                  <input name="passphrase_env" value="${esc(data.config.okx.passphrase_env)}" placeholder="TG_OKX_OKX_PASSPHRASE">
+                </label>
+                <ul class="hint-list">
+                  <li>这里改的是“从哪个环境变量读取凭证”。</li>
+                  <li>保存后不回显明文；如果变量名改了，请重新写入本地 .env。</li>
+                </ul>
+              </div>
+            </div>
+            <button>保存 OKX 基础配置</button>
+          </form>
+          <form id="okxSecretForm">
+            <div class="form-section">
+              <div class="subsection">
+                <h3>安全写入凭证</h3>
+                <div class="section-lead">这里会把新值写入本地 .env，并保持 config.json 中的 api_key/api_secret/passphrase 为空。</div>
+                <div class="field-grid">
+                  <label class="field">
+                    <span>OKX api_key</span>
+                    <input name="api_key" type="password" value="" placeholder="留空表示不改">
+                  </label>
+                  <label class="field">
+                    <span>OKX api_secret</span>
+                    <input name="api_secret" type="password" value="" placeholder="留空表示不改">
+                  </label>
+                </div>
+                <label class="field">
+                  <span>OKX passphrase</span>
+                  <input name="passphrase" type="password" value="" placeholder="留空表示不改">
+                </label>
+                <label class="field">
+                  <span>清理已保存凭证</span>
+                  <select name="clear_existing"><option value="false">否，仅更新填写的项</option><option value="true">是，先清空旧值再保存新值</option></select>
+                </label>
+              </div>
+            </div>
+            <div class="button-row">
+              <button type="submit">写入本地 .env 凭证</button>
+              <button type="button" id="okxClearSecretsButton">清空 OKX 凭证</button>
+            </div>
+          </form>
+        </section>
+        <section class="card card--wide"><h2>AI 配置</h2>
           <form id="aiForm">
             <div class="form-section">
-              <div class="field-grid">
-                <label class="field">
-                  <span>Provider</span>
+              <div class="subsection">
+                <h3>当前生效值</h3>
+                <div class="key-grid">
+                  <div class="key-item"><strong>提供方</strong><div>${esc(data.config.ai.provider)}</div><div class="muted">${esc(aiProviderHint)}</div></div>
+                  <div class="key-item"><strong>模型</strong><div>${esc(data.config.ai.model)}</div><div class="muted">当前识别信号时直接使用这个模型名。</div></div>
+                  <div class="key-item"><strong>Agent ID</strong><div>${esc(data.config.ai.openclaw_agent_id || '未设置')}</div><div class="muted">仅 provider=openclaw 时生效。</div></div>
+                  <div class="key-item"><strong>思考强度</strong><div>${esc(displayThinking(data.config.ai.thinking))}</div><div class="muted">超时 ${esc(data.config.ai.timeout_seconds)} 秒。</div></div>
+                </div>
+              </div>
+              <div class="subsection">
+                <h3>常用项</h3>
+                <div class="field-grid">
+                  <label class="field">
+                    <span>AI 提供方</span>
                   <input name="provider" value="${esc(data.config.ai.provider)}" placeholder="openclaw">
                 </label>
                 <label class="field">
-                  <span>Model</span>
+                  <span>模型名</span>
                   <input name="model" value="${esc(data.config.ai.model)}" placeholder="default">
                 </label>
-              </div>
-              <div class="field-grid">
                 <label class="field">
-                  <span>Thinking 强度</span>
+                  <span>OpenClaw Agent ID</span>
+                  <input name="openclaw_agent_id" value="${esc(data.config.ai.openclaw_agent_id)}" placeholder="main">
+                </label>
+                <label class="field">
+                  <span>思考强度</span>
                   <select name="thinking"><option value="off" ${data.config.ai.thinking==='off'?'selected':''}>关闭</option><option value="minimal" ${data.config.ai.thinking==='minimal'?'selected':''}>极低</option><option value="low" ${data.config.ai.thinking==='low'?'selected':''}>低</option><option value="medium" ${data.config.ai.thinking==='medium'?'selected':''}>中</option><option value="high" ${data.config.ai.thinking==='high'?'selected':''}>高</option><option value="custom" ${data.config.ai.thinking==='custom'?'selected':''}>自定义</option></select>
                 </label>
+                </div>
+              </div>
+              <div class="subsection">
+                <h3>高级项</h3>
+                <div class="field-grid">
                 <label class="field">
                   <span>超时秒数</span>
                   <input name="timeout_seconds" type="number" min="1" value="${esc(data.config.ai.timeout_seconds)}">
                 </label>
+                </div>
+                <label class="field field--full">
+                  <span>系统提示词</span>
+                  <textarea name="system_prompt" rows="4" placeholder="例如：只返回严格 JSON，不要写解释">${esc(data.config.ai.system_prompt)}</textarea>
+                </label>
+                <ul class="hint-list">
+                  <li>如果只是日常调试，通常改“提供方 / 模型 / Agent ID / 思考强度”就够了。</li>
+                  <li>“系统提示词”会直接影响解析风格，改动后建议立即做一次演示信号冒烟。</li>
+                </ul>
               </div>
-              <label class="field field--full">
-                <span>系统提示词</span>
-                <textarea name="system_prompt" rows="4" placeholder="仅输出严格 JSON">${esc(data.config.ai.system_prompt)}</textarea>
-              </label>
             </div>
             <button>保存 AI 配置</button>
           </form>
@@ -656,8 +778,46 @@ def _render_app_html(initial_view: str = "overview") -> str:
           e.preventDefault();
           const f = new FormData(e.target);
           try {
-            await api('/api/config', {method:'POST', body: JSON.stringify({ai:{ provider:String(f.get('provider')).trim(), model:String(f.get('model')).trim(), thinking:String(f.get('thinking')), timeout_seconds:Number(f.get('timeout_seconds')), system_prompt:String(f.get('system_prompt')) }})});
+            await api('/api/config', {method:'POST', body: JSON.stringify({ai:{ provider:String(f.get('provider')).trim(), model:String(f.get('model')).trim(), openclaw_agent_id:String(f.get('openclaw_agent_id')).trim(), thinking:String(f.get('thinking')), timeout_seconds:Number(f.get('timeout_seconds')), system_prompt:String(f.get('system_prompt')) }})});
             setFeedback('AI 配置已保存', 'success');
+            await load();
+          } catch (err) { setFeedback(err.message, 'error', true); }
+        });
+      }
+      const okxSettingsForm = document.getElementById('okxSettingsForm');
+      if (okxSettingsForm && okxSettingsForm.dataset.bound !== 'true') {
+        okxSettingsForm.dataset.bound = 'true';
+        okxSettingsForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const f = new FormData(e.target);
+          try {
+            await api('/api/config', {method:'POST', body: JSON.stringify({okx:{ enabled:f.get('enabled') === 'true', use_demo:f.get('use_demo') === 'true', rest_base:String(f.get('rest_base')).trim(), ws_private_url:String(f.get('ws_private_url')).trim(), api_key_env:String(f.get('api_key_env')).trim(), api_secret_env:String(f.get('api_secret_env')).trim(), passphrase_env:String(f.get('passphrase_env')).trim() }})});
+            setFeedback('OKX 基础配置已保存', 'success');
+            await load();
+          } catch (err) { setFeedback(err.message, 'error', true); }
+        });
+      }
+      const okxSecretForm = document.getElementById('okxSecretForm');
+      if (okxSecretForm && okxSecretForm.dataset.bound !== 'true') {
+        okxSecretForm.dataset.bound = 'true';
+        okxSecretForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const f = new FormData(e.target);
+          try {
+            await api('/api/okx-credentials', {method:'POST', body: JSON.stringify({ api_key:String(f.get('api_key') || ''), api_secret:String(f.get('api_secret') || ''), passphrase:String(f.get('passphrase') || ''), clear_existing:String(f.get('clear_existing')) === 'true' })});
+            e.target.reset();
+            setFeedback('OKX 凭证已写入本地 .env', 'success');
+            await load();
+          } catch (err) { setFeedback(err.message, 'error', true); }
+        });
+      }
+      const okxClearSecretsButton = document.getElementById('okxClearSecretsButton');
+      if (okxClearSecretsButton && okxClearSecretsButton.dataset.bound !== 'true') {
+        okxClearSecretsButton.dataset.bound = 'true';
+        okxClearSecretsButton.addEventListener('click', async () => {
+          try {
+            await api('/api/okx-credentials', {method:'POST', body: JSON.stringify({clear_existing:true})});
+            setFeedback('OKX 凭证已从本地 .env 清空', 'warning', true);
             await load();
           } catch (err) { setFeedback(err.message, 'error', true); }
         });
@@ -1933,6 +2093,18 @@ class WebController:
                 "secret_status": self.runtime.secret_status(updated),
                 "wiring": self.runtime.wiring_summary(updated),
             }
+        if path == "/api/okx-credentials":
+            try:
+                payload = _decode_json_body(body)
+                updated = self.runtime.update_okx_credentials(
+                    api_key=str(payload.get("api_key", "")),
+                    api_secret=str(payload.get("api_secret", "")),
+                    passphrase=str(payload.get("passphrase", "")),
+                    clear_existing=bool(payload.get("clear_existing", False)),
+                )
+            except ValueError as exc:
+                return HTTPStatus.BAD_REQUEST, {}, {"error": str(exc)}
+            return HTTPStatus.OK, {}, updated
         if path == "/api/inject-message":
             try:
                 payload = _decode_json_body(body)

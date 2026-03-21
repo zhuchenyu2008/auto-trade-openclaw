@@ -583,6 +583,43 @@ def externalize_config_secrets(config_path: Path) -> dict[str, Any]:
     }
 
 
+def update_local_env_values(
+    config_path: Path,
+    updates: dict[str, str] | None = None,
+    removals: list[str] | None = None,
+) -> dict[str, Any]:
+    env_path = local_env_path(config_path.parent.resolve())
+    env_values = read_env_file(env_path)
+    changed: list[str] = []
+    removed: list[str] = []
+
+    for key in removals or []:
+        name = str(key or "").strip()
+        if not name:
+            continue
+        if name in env_values:
+            env_values.pop(name, None)
+            removed.append(name)
+
+    for key, value in (updates or {}).items():
+        name = str(key or "").strip()
+        if not name:
+            continue
+        text = str(value or "").strip()
+        if not text:
+            continue
+        env_values[name] = text
+        changed.append(name)
+
+    write_env_file(env_path, env_values)
+    load_local_env(config_path.parent.resolve())
+    return {
+        "env_path": str(env_path.resolve()),
+        "updated_vars": changed,
+        "removed_vars": removed,
+    }
+
+
 def _resolve_runtime_paths(config: AppConfig, base_dir: Path) -> None:
     data_dir = Path(config.runtime.data_dir)
     sqlite_path = Path(config.runtime.sqlite_path)

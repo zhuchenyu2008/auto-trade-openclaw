@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from tg_okx_auto_trade.ai import OpenClawAI
-from tg_okx_auto_trade.config import hash_pin
+from tg_okx_auto_trade.config import hash_pin, local_env_path, read_env_file
 from tg_okx_auto_trade.models import NormalizedMessage, TradingIntent
 from tg_okx_auto_trade.runtime import (
     DEFAULT_DEMO_SIGNAL_TEXT,
@@ -3106,6 +3106,7 @@ class AppTests(unittest.TestCase):
                     "ai": {
                         "provider": "heuristic",
                         "model": "intraday-v3",
+                        "openclaw_agent_id": "swing-desk",
                         "thinking": "medium",
                         "timeout_seconds": 9,
                         "system_prompt": "Return strict JSON only.",
@@ -3116,10 +3117,135 @@ class AppTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(updated["config"]["ai"]["model"], "intraday-v3")
+        self.assertEqual(updated["config"]["ai"]["openclaw_agent_id"], "swing-desk")
         self.assertEqual(updated["config"]["ai"]["thinking"], "medium")
         self.assertEqual(updated["config"]["ai"]["timeout_seconds"], 9)
         self.assertEqual(updated["config"]["ai"]["system_prompt"], "Return strict JSON only.")
         self.assertEqual(runtime.snapshot()["config"]["ai"]["model"], "intraday-v3")
+
+    def test_web_okx_config_patch_updates_editable_flags_and_env_names(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, updated = controller.route(
+            "POST",
+            "/api/config",
+            body=json.dumps(
+                {
+                    "okx": {
+                        "enabled": True,
+                        "use_demo": True,
+                        "rest_base": "https://demo.example.okx",
+                        "ws_private_url": "wss://demo.example.okx/private",
+                        "api_key_env": "WEB_OKX_KEY",
+                        "api_secret_env": "WEB_OKX_SECRET",
+                        "passphrase_env": "WEB_OKX_PASS",
+                    }
+                }
+            ).encode("utf-8"),
+            headers={"Cookie": session_cookie, "Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("requires demo credentials", updated["error"])
+
+        status, _, updated = controller.route(
+            "POST",
+            "/api/config",
+            body=json.dumps(
+                {
+                    "okx": {
+                        "enabled": False,
+                        "use_demo": True,
+                        "rest_base": "https://demo.example.okx",
+                        "ws_private_url": "wss://demo.example.okx/private",
+                        "api_key_env": "WEB_OKX_KEY",
+                        "api_secret_env": "WEB_OKX_SECRET",
+                        "passphrase_env": "WEB_OKX_PASS",
+                    }
+                }
+            ).encode("utf-8"),
+            headers={"Cookie": session_cookie, "Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["config"]["okx"]["rest_base"], "https://demo.example.okx")
+        self.assertEqual(updated["config"]["okx"]["ws_private_url"], "wss://demo.example.okx/private")
+        self.assertEqual(updated["config"]["okx"]["api_key_env"], "WEB_OKX_KEY")
+        self.assertEqual(updated["config"]["okx"]["api_secret_env"], "WEB_OKX_SECRET")
+        self.assertEqual(updated["config"]["okx"]["passphrase_env"], "WEB_OKX_PASS")
+
+    def test_web_okx_credentials_route_writes_local_env_without_persisting_plaintext(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        runtime.update_config(
+            {"okx": {"api_key_env": "WEB_OKX_KEY", "api_secret_env": "WEB_OKX_SECRET", "passphrase_env": "WEB_OKX_PASS"}}
+        )
+        status, _, updated = controller.route(
+            "POST",
+            "/api/okx-credentials",
+            body=json.dumps(
+                {
+                    "api_key": "web-key",
+                    "api_secret": "web-secret",
+                    "passphrase": "web-passphrase",
+                    "clear_existing": True,
+                }
+            ).encode("utf-8"),
+            headers={"Cookie": session_cookie, "Content-Type": "application/json"},
+        )
+        self.assertEqual(status, 200)
+        env_values = read_env_file(local_env_path(self.root))
+        self.assertEqual(env_values["WEB_OKX_KEY"], "web-key")
+        self.assertEqual(env_values["WEB_OKX_SECRET"], "web-secret")
+        self.assertEqual(env_values["WEB_OKX_PASS"], "web-passphrase")
+        persisted = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(persisted["okx"]["api_key"], "")
+        self.assertEqual(persisted["okx"]["api_secret"], "")
+        self.assertEqual(persisted["okx"]["passphrase"], "")
+        self.assertTrue(updated["secret_status"]["okx_demo_credentials_configured"])
+        self.assertEqual(updated["secret_sources"]["okx_demo_credentials"], "env")
+
+    def test_web_settings_page_surfaces_okx_and_ai_rework_in_chinese(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, body = controller.route("GET", "/?view=settings", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn("OKX 配置", body)
+        self.assertIn("安全写入凭证", body)
+        self.assertIn("常用项", body)
+        self.assertIn("高级项", body)
+        self.assertIn("当前生效值", body)
 
     def test_web_uses_feedback_bar_instead_of_alerts(self):
         runtime = Runtime(self.root / "config.json")

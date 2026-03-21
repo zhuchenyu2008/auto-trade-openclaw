@@ -35,6 +35,7 @@ from .config import (
     secret_sources,
     topic_target_parts,
     topic_target_to_link,
+    update_local_env_values,
 )
 from .models import NormalizedMessage, TradingIntent, utc_now
 from .okx import OKXGateway
@@ -1749,6 +1750,60 @@ class Runtime:
         self.log("info", "config", "Configuration updated", patch, audit=True)
         self._sync_runtime_artifacts()
         return updated
+
+    def update_okx_credentials(
+        self,
+        *,
+        api_key: str = "",
+        api_secret: str = "",
+        passphrase: str = "",
+        clear_existing: bool = False,
+    ) -> dict[str, Any]:
+        current = self.config_manager.get()
+        env_names = [
+            current.okx.api_key_env,
+            current.okx.api_secret_env,
+            current.okx.passphrase_env,
+        ]
+        updates = {
+            current.okx.api_key_env: api_key,
+            current.okx.api_secret_env: api_secret,
+            current.okx.passphrase_env: passphrase,
+        }
+        env_result = update_local_env_values(
+            self.config_manager.path,
+            updates=updates,
+            removals=env_names if clear_existing else [],
+        )
+
+        def mutator(config: AppConfig) -> None:
+            config.okx.api_key = ""
+            config.okx.api_secret = ""
+            config.okx.passphrase = ""
+
+        updated = self.config_manager.update(mutator)
+        self.on_config_change(updated)
+        self.log(
+            "info",
+            "config",
+            "OKX credentials updated via Web",
+            {
+                "source": "local_env",
+                "clear_existing": clear_existing,
+                "updated_vars": env_result["updated_vars"],
+                "removed_vars": env_result["removed_vars"],
+            },
+            audit=True,
+        )
+        self._sync_runtime_artifacts()
+        return {
+            "updated": True,
+            "env_path": env_result["env_path"],
+            "config": public_config_dict(updated),
+            "secret_status": self.secret_status(updated),
+            "secret_sources": secret_sources(updated),
+            "wiring": self.wiring_summary(updated),
+        }
 
     def upsert_channel(self, payload: dict[str, Any]) -> dict[str, Any]:
         normalized = _normalize_channel_payload(payload)
