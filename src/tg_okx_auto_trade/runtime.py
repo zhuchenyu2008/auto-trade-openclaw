@@ -286,7 +286,13 @@ class Runtime:
         self.log("info", "ai", "AI decision produced", intent.to_dict())
         duplicate_exists = self.storage.order_exists(self.risk._idempotency_key(message, intent))
         execution_intent = self._apply_global_protection(intent, config)
-        risk = self.risk.evaluate(message, execution_intent, duplicate_exists)
+        risk = self.risk.evaluate(
+            message,
+            execution_intent,
+            duplicate_exists,
+            positions=positions,
+            recent_messages=recent_messages,
+        )
         self.storage.save_risk_check(risk.idempotency_key, risk.approved, risk.code, risk.reason, risk.intent.to_dict())
         self.storage.update_message_status(message.chat_id, message.message_id, message.version, "RISK_CHECKED")
         if not risk.approved:
@@ -408,7 +414,14 @@ class Runtime:
         self.storage.set_runtime_meta("telegram:public_web_state", payload)
 
     def _message_status_for_risk_result(self, risk_code: str) -> str:
-        if risk_code == "management_update":
+        if risk_code in {
+            "management_update",
+            "already_flat",
+            "duplicate_protection",
+            "no_active_protection",
+            "symbol_context_conflict",
+            "position_side_conflict",
+        }:
             return "MANAGEMENT_SKIPPED"
         if risk_code == "ignored_signal":
             return "IGNORED"
@@ -447,6 +460,11 @@ class Runtime:
     def _topic_localize_risk_reason(self, risk_code: str, reason: str) -> str:
         localized = {
             "management_update": "识别为管理/保护更新消息，当前不按新开仓执行",
+            "already_flat": "当前已无相关持仓，本次管理动作已跳过",
+            "duplicate_protection": "保护参数未变化，重复管理动作已抑制",
+            "no_active_protection": "当前没有可撤销的保护/挂单记录，已跳过",
+            "symbol_context_conflict": "当前标的与最近交易链冲突，已避免盲挂管理动作",
+            "position_side_conflict": "当前持仓方向与管理动作不匹配，已跳过",
             "ignored_signal": "识别为无需执行的消息，已跳过",
             "close_only": "当前处于只允许平仓/撤单/保护更新模式",
             "paused": "当前交易已暂停",
@@ -469,6 +487,7 @@ class Runtime:
             "paused": "运行已暂停",
             "manual_confirmation": "待人工确认",
             "duplicate": "重复信号",
+            "position_conflict": "仓位冲突",
             "invalid_action": "动作无效",
             "invalid_symbol": "标的无效",
             "invalid_leverage": "杠杆无效",

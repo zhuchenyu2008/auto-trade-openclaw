@@ -552,7 +552,8 @@ def _infer_trade_context(
     recent_messages: list[dict[str, Any]],
     account_state: dict[str, Any],
 ) -> dict[str, Any]:
-    symbol = _extract_symbol(text.upper()) or _extract_symbol(text)
+    explicit_symbol = _extract_symbol(text.upper()) or _extract_symbol(text)
+    symbol = explicit_symbol
     positions = account_state.get("positions") if isinstance(account_state, dict) else []
     normalized_positions: list[dict[str, Any]] = []
     if isinstance(positions, list):
@@ -567,34 +568,80 @@ def _infer_trade_context(
                     "qty": float(payload.get("qty") or payload.get("pos") or payload.get("quantity") or 0.0),
                 }
             )
+    recent_trade_symbol = _infer_symbol_from_recent_messages(recent_messages, trade_messages_only=True)
+    open_positions = [item for item in normalized_positions if item["side"] != "flat" and item["symbol"]]
     if symbol:
         matched = next((item for item in normalized_positions if item["symbol"] == symbol and item["side"] != "flat"), None)
         if matched:
-            return matched
+            return {
+                **matched,
+                "symbol_source": "explicit",
+                "recent_trade_symbol": recent_trade_symbol,
+                "context_conflict": bool(recent_trade_symbol and recent_trade_symbol != symbol),
+            }
     if not symbol:
-        recent_symbol = _infer_symbol_from_recent_messages(recent_messages)
-        open_positions = [item for item in normalized_positions if item["side"] != "flat" and item["symbol"]]
-        if recent_symbol:
-            symbol = recent_symbol
-        elif len(open_positions) == 1:
+        if len(open_positions) == 1 and (
+            not recent_trade_symbol or recent_trade_symbol == open_positions[0]["symbol"]
+        ):
             symbol = open_positions[0]["symbol"]
+            symbol_source = "single_open_position"
+        elif recent_trade_symbol:
+            matching_open = next((item for item in open_positions if item["symbol"] == recent_trade_symbol), None)
+            if matching_open or not open_positions:
+                symbol = recent_trade_symbol
+                symbol_source = "recent_trade_chain"
+            else:
+                return {
+                    "symbol": "",
+                    "side": "flat",
+                    "qty": 0.0,
+                    "symbol_source": "ambiguous_recent_trade_chain",
+                    "recent_trade_symbol": recent_trade_symbol,
+                    "context_conflict": True,
+                }
+        else:
+            symbol_source = ""
+    else:
+        symbol_source = "explicit"
     if symbol:
         matched = next((item for item in normalized_positions if item["symbol"] == symbol), None)
         if matched:
-            return matched
+            return {
+                **matched,
+                "symbol_source": symbol_source,
+                "recent_trade_symbol": recent_trade_symbol,
+                "context_conflict": bool(recent_trade_symbol and recent_trade_symbol != symbol),
+            }
         return {
             "symbol": symbol,
             "side": _infer_side_from_recent_messages(recent_messages, symbol),
             "qty": 0.0,
+            "symbol_source": symbol_source,
+            "recent_trade_symbol": recent_trade_symbol,
+            "context_conflict": bool(recent_trade_symbol and recent_trade_symbol != symbol),
         }
     if len(normalized_positions) == 1:
-        return normalized_positions[0]
-    return {"symbol": "", "side": "flat", "qty": 0.0}
+        return {
+            **normalized_positions[0],
+            "symbol_source": "single_open_position_fallback",
+            "recent_trade_symbol": recent_trade_symbol,
+            "context_conflict": bool(recent_trade_symbol and recent_trade_symbol != normalized_positions[0]["symbol"]),
+        }
+    return {
+        "symbol": "",
+        "side": "flat",
+        "qty": 0.0,
+        "symbol_source": "none",
+        "recent_trade_symbol": recent_trade_symbol,
+        "context_conflict": False,
+    }
 
 
-def _infer_symbol_from_recent_messages(recent_messages: list[dict[str, Any]]) -> str:
+def _infer_symbol_from_recent_messages(recent_messages: list[dict[str, Any]], trade_messages_only: bool = False) -> str:
     for item in reversed(recent_messages[-6:]):
         text = str(item.get("text") or item.get("caption") or "").strip()
+        if trade_messages_only and _classify_recent_message_role(text) not in {"trade_entry", "position_change"}:
+            continue
         symbol = _extract_symbol(text.upper()) or _extract_symbol(text)
         if symbol:
             return symbol
@@ -617,3 +664,14 @@ def _infer_side_from_recent_messages(recent_messages: list[dict[str, Any]], symb
 
 def _has_half_reduce_hint(text: str) -> bool:
     return any(keyword in text for keyword in ("HALF", "1/2", "一半", "半仓", "平半"))
+
+
+def _classify_recent_message_role(text: str) -> str:
+    upper = str(text or "").upper()
+    if any(keyword in upper for keyword in ("止盈", "止损", "保本", "BREAKEVEN", "TRAILING", "TP", "SL", "TARGET")):
+        return "management_update"
+    if any(keyword in upper for keyword in ("REDUCE", "PARTIAL", "平一半", "减仓", "CLOSE", "出局", "平仓", "REVERSE", "FLIP", "ADD")):
+        return "position_change"
+    if any(keyword in upper for keyword in ("LONG", "SHORT", "BUY", "SELL", "开多", "开空", "做多", "做空", "市价多", "市价空")):
+        return "trade_entry"
+    return "unknown"

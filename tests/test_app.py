@@ -1433,6 +1433,81 @@ class AppTests(unittest.TestCase):
         self.assertEqual(snapshot["orders"][0]["payload"]["action"], "close_all")
         self.assertEqual(snapshot["positions"][0]["payload"]["side"], "flat")
 
+    def test_close_all_after_flat_is_management_skipped(self):
+        self.runtime.process_message(self._message("LONG BTCUSDT size 40"))
+        self.runtime.process_message(self._message("比特币出局", version=2))
+        self.runtime.process_message(self._message("比特币出局", version=3))
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "MANAGEMENT_SKIPPED")
+        self.assertEqual(snapshot["orders"][0]["payload"]["action"], "close_all")
+        self.assertEqual(snapshot["positions"][0]["payload"]["side"], "flat")
+
+    def test_reduce_after_flat_is_management_skipped(self):
+        self.runtime.process_message(self._message("LONG BTCUSDT size 40"))
+        self.runtime.process_message(self._message("比特币出局", version=2))
+        self.runtime.process_message(self._message("求稳的可以平一半", version=3))
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "MANAGEMENT_SKIPPED")
+        self.assertEqual(len(snapshot["orders"]), 2)
+        self.assertEqual(snapshot["positions"][0]["payload"]["side"], "flat")
+
+    def test_duplicate_protection_update_is_suppressed(self):
+        self.runtime.process_message(self._message("LONG BTCUSDT"))
+        self.runtime.process_message(self._message("BTCUSDT 止盈：74500 止损：73000", version=2))
+        self.runtime.process_message(self._message("BTCUSDT 止盈：74500 止损：73000", version=3))
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "MANAGEMENT_SKIPPED")
+        self.assertEqual(len(snapshot["orders"]), 2)
+
+    def test_management_message_uses_explicit_symbol_instead_of_recent_trade_chain(self):
+        self.runtime.process_message(self._message("LONG BTCUSDT size 40"))
+        self.runtime.process_message(
+            NormalizedMessage(
+                source="telegram",
+                adapter="manual",
+                chat_id="-1001",
+                message_id=2,
+                event_type="new",
+                version=1,
+                date="2026-03-17T00:01:00+00:00",
+                edit_date=None,
+                text="LONG ETHUSDT size 30",
+                caption="",
+                media=[],
+                entities=[],
+                reply_to=None,
+                forward_from=None,
+                raw_hash="raw-eth-1",
+                semantic_hash="sem-eth-1",
+            )
+        )
+        self.runtime.process_message(
+            NormalizedMessage(
+                source="telegram",
+                adapter="manual",
+                chat_id="-1001",
+                message_id=3,
+                event_type="new",
+                version=1,
+                date="2026-03-17T00:02:00+00:00",
+                edit_date=None,
+                text="比特币止损：73000",
+                caption="",
+                media=[],
+                entities=[],
+                reply_to=None,
+                forward_from=None,
+                raw_hash="raw-btc-sl-1",
+                semantic_hash="sem-btc-sl-1",
+            )
+        )
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "EXECUTED")
+        self.assertEqual(snapshot["orders"][0]["payload"]["action"], "update_protection")
+        positions = {item["symbol"]: item["payload"] for item in snapshot["positions"]}
+        self.assertEqual(positions["BTC-USDT-SWAP"]["protection"]["sl"]["trigger"], 73000.0)
+        self.assertEqual(positions["ETH-USDT-SWAP"]["protection"], {})
+
     def test_runtime_topic_risk_broadcast_uses_chinese_template(self):
         self.runtime.update_config({"trading": {"readonly_close_only": True}})
         with mock.patch.object(self.runtime, "_send_topic_update") as send_topic:
