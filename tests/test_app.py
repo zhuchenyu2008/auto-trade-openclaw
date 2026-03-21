@@ -1199,6 +1199,33 @@ class AppTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.runtime.update_config({"trading": {"execution_mode": "semi_automatic"}})
 
+    def test_config_validation_accepts_shadow_and_live_mode_semantics(self):
+        updated = self.runtime.update_config({"trading": {"mode": "shadow"}})
+        self.assertEqual(updated.trading.mode, "shadow")
+        updated = self.runtime.update_config({"trading": {"mode": "live"}})
+        self.assertEqual(updated.trading.mode, "live")
+
+    def test_shadow_mode_records_preview_without_execution(self):
+        self.runtime.update_config({"trading": {"mode": "shadow", "execution_mode": "automatic"}})
+        with mock.patch.object(self.runtime.okx, "execute", side_effect=AssertionError("shadow mode should not execute")):
+            self.runtime.process_message(self._message("LONG BTCUSDT"))
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "SHADOWED")
+        self.assertEqual(snapshot["orders"][0]["status"], "shadowed")
+        self.assertEqual(snapshot["orders"][0]["mode"], "shadow")
+        self.assertEqual(snapshot["orders"][0]["payload"]["execution_path"], "shadow_mode")
+        self.assertEqual(snapshot["health"]["trading_runtime"]["status"], "shadow")
+
+    def test_live_mode_remains_hard_blocked_and_exposes_prep_semantics(self):
+        self.runtime.update_config({"trading": {"mode": "live", "execution_mode": "automatic"}})
+        self.runtime.process_message(self._message("LONG BTCUSDT"))
+        snapshot = self.runtime.public_snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "RISK_REJECTED")
+        self.assertFalse(snapshot["orders"])
+        self.assertEqual(snapshot["mode_semantics"]["profile_label"], "实盘预备模式")
+        self.assertIn("实盘执行仍被硬拦截", snapshot["mode_semantics"]["operator_summary"])
+        self.assertEqual(snapshot["health"]["trading_runtime"]["status"], "blocked")
+
     def test_config_validation_accepts_public_web_channel_without_chat_id(self):
         updated = self.runtime.update_config(
             {
@@ -2743,6 +2770,8 @@ class AppTests(unittest.TestCase):
         self.assertEqual(snapshot["wiring"]["topic_target_link"], "https://t.me/c/3720752566/2080")
         self.assertEqual(snapshot["wiring"]["operator_command_ingress"], "ready")
         self.assertEqual(snapshot["wiring"]["okx_execution_path"], "real_demo_rest")
+        self.assertEqual(snapshot["wiring"]["mode_semantics"]["profile_label"], "演示模式")
+        self.assertIn("仅允许 Demo 路径", snapshot["mode_semantics"]["operator_summary"])
         self.assertEqual(snapshot["activation_summary"]["manual_demo"]["status"], "ready")
         self.assertEqual(snapshot["activation_summary"]["operator_topic_inbound"]["status"], "legacy")
         self.assertIn(snapshot["verification_status"], {"ok", "warn"})
@@ -2862,8 +2891,8 @@ class AppTests(unittest.TestCase):
         localized_text = json.dumps(web_display, ensure_ascii=False)
 
         self.assertEqual(web_display["direct_use_profile"]["status_label"], "可手动直用")
-        self.assertEqual(web_display["overview"]["runtime_detail"], "交易链路运行中")
-        self.assertEqual(readiness["trading_runtime"]["detail"], "交易链路运行中")
+        self.assertEqual(web_display["overview"]["runtime_detail"], "当前会按演示路径推进执行；仅允许模拟或 OKX Demo")
+        self.assertEqual(readiness["trading_runtime"]["detail"], "当前会按演示路径推进执行；仅允许模拟或 OKX Demo")
         self.assertEqual(readiness["simulated_positions"]["detail"], "已恢复 0 份模拟持仓快照")
         self.assertIn("Web 登录、配置持久化、运行时状态和手动演示注入链路均已就绪", capabilities["manual_demo_pipeline"]["detail"])
         self.assertIn("如需执行真实操作员话题冒烟测试", capabilities["operator_topic"]["action"])
@@ -2880,6 +2909,24 @@ class AppTests(unittest.TestCase):
         self.assertNotIn("Web login, config persistence", localized_text)
         self.assertNotIn("Outbound operator-topic delivery is disabled", localized_text)
         self.assertNotIn("Web: open", localized_text)
+
+    def test_web_state_exposes_shadow_mode_semantics_in_chinese(self):
+        self.runtime.update_config({"trading": {"mode": "shadow", "execution_mode": "automatic"}})
+        controller = WebController(self.runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+        status, _, state = controller.route("GET", "/api/state", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertEqual(state["mode_semantics"]["profile_label"], "影子预演模式")
+        self.assertIn("拟执行日志", state["mode_semantics"]["operator_summary"])
+        self.assertEqual(state["web_display"]["overview"]["mode_profile_label"], "影子预演模式")
+        self.assertIn("实盘预备基础建设", state["mode_semantics"]["live_guard_detail"])
 
     def test_web_display_localizes_remaining_okx_and_operator_topic_residues(self):
         config_payload = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
@@ -3549,8 +3596,10 @@ class AppTests(unittest.TestCase):
         self.assertIn("function renderRuntimeView(ctx)", body)
         self.assertIn("displayTradingMode(data.config.trading.mode)", body)
         self.assertIn("displayExecutionMode(data.config.trading.execution_mode)", body)
-        self.assertIn(">观察模式</option>", body)
-        self.assertIn(">自动执行</option>", body)
+        self.assertIn("观察模式：只记录解析/风控", body)
+        self.assertIn("影子预演：记录拟执行，不下单", body)
+        self.assertIn("实盘预备：仅展示 live-ready 语义，仍硬拦截", body)
+        self.assertIn(">自动推进</option>", body)
         self.assertIn('<button id="channelSubmitButton" type="submit">保存频道</button>', body)
         self.assertIn("function setCurrentView(view, replace)", body)
         self.assertNotIn("data.config.trading.mode + ' / ' + data.config.trading.execution_mode", body)

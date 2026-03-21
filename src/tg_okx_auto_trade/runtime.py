@@ -157,15 +157,16 @@ class Runtime:
         self.topic_logger = TopicLogger(config)
 
     def _refresh_trading_runtime_health(self, config: AppConfig, detail: str | None = None) -> None:
+        mode_semantics = self._mode_semantics(config)
         if config.trading.paused:
             status = "paused"
             detail = detail or self._pause_reason or "Trading is paused"
-        elif self._is_observe_only(config):
-            status = "observe"
-            detail = detail or "Observe-only path is active"
+        elif mode_semantics["runtime_status"] != "running":
+            status = mode_semantics["runtime_status"]
+            detail = detail or mode_semantics["runtime_detail"]
         else:
             status = "running"
-            detail = detail or "Trading pipeline is active"
+            detail = detail or mode_semantics["runtime_detail"]
         if config.trading.readonly_close_only:
             detail = f"{detail}; close-only mode is active"
         self._set_health("trading_runtime", status, detail)
@@ -326,6 +327,31 @@ class Runtime:
             self.log("info", "execution", "Observe-only intent recorded", {"symbol": execution_intent.symbol, "action": execution_intent.action})
             self._send_topic_update(self._topic_observe_message(execution_intent))
             return
+        if self._is_shadow_mode(config):
+            self.storage.save_order(
+                risk.idempotency_key,
+                execution_intent,
+                config.trading.mode,
+                "shadowed",
+                {
+                    "environment": "shadow_mode",
+                    "execution_path": "shadow_mode",
+                    "action": execution_intent.action,
+                    "symbol": execution_intent.symbol,
+                    "side": execution_intent.side,
+                    "protection": _intent_protection_summary(execution_intent),
+                    "reason": "Shadow mode ran parse, risk, and preview logging without sending any order.",
+                },
+            )
+            self.storage.update_message_status(message.chat_id, message.message_id, message.version, "SHADOWED")
+            self.log(
+                "info",
+                "execution",
+                "Shadow-mode intent preview recorded",
+                {"symbol": execution_intent.symbol, "action": execution_intent.action},
+            )
+            self._send_topic_update(self._topic_shadow_message(execution_intent))
+            return
         try:
             result = self.okx.execute(execution_intent, force_simulated=force_simulated)
         except Exception as exc:
@@ -444,11 +470,17 @@ class Runtime:
         }.get(str(action or ""), str(action or "未提供"))
 
     def _topic_mode_label(self, mode: str) -> str:
-        return {"demo": "演示模式", "observe": "观察模式", "live": "实盘模式"}.get(str(mode or ""), str(mode or "未提供"))
+        return {
+            "demo": "演示模式",
+            "observe": "观察模式",
+            "shadow": "影子预演模式",
+            "live": "实盘预备模式",
+        }.get(str(mode or ""), str(mode or "未提供"))
 
     def _topic_status_label(self, status: str) -> str:
         return {
             "observed": "仅观察记录",
+            "shadowed": "影子预演记录",
             "filled": "已成交",
             "updated": "已更新",
             "submitted": "已提交",
@@ -503,6 +535,12 @@ class Runtime:
         return (
             f"[观察] {self._topic_action_label(intent.action)} {intent.symbol}，"
             f"已按观察模式记录，未实际下单"
+        )
+
+    def _topic_shadow_message(self, intent: TradingIntent) -> str:
+        return (
+            f"[影子预演] {self._topic_action_label(intent.action)} {intent.symbol}，"
+            f"已完成解析、风控和拟执行记录，未实际下单"
         )
 
     def _topic_execution_error_message(self, intent: TradingIntent, exc: Exception) -> str:
@@ -656,6 +694,7 @@ class Runtime:
             "okx_rest_reachability": self._endpoint_reachability("okx_rest_base", current.okx.rest_base, enabled=current.okx.enabled),
             "trading_mode": current.trading.mode,
             "execution_mode": current.trading.execution_mode,
+            "mode_semantics": self._mode_semantics(current),
             "web_bind": active_web_bind or configured_web_bind,
             "web_server_active": bool(active_web_bind),
             "web_restart_required": bool(active_web_bind and active_web_bind != configured_web_bind),
@@ -669,6 +708,7 @@ class Runtime:
         snapshot["secret_status"] = self.secret_status(config)
         snapshot["secret_sources"] = secret_sources(config)
         snapshot["wiring"] = self.wiring_summary(config)
+        snapshot["mode_semantics"] = self._mode_semantics(config)
         snapshot["capabilities"] = self.capability_summary(config)
         snapshot["activation_summary"] = self.activation_summary(config)
         snapshot["remaining_gaps"] = self.remaining_gaps(config)
@@ -1246,33 +1286,43 @@ class Runtime:
             direct_use_missing.append("enabled public_web source channel")
         if not topic_target:
             direct_use_missing.append("operator topic target")
+        mode_semantics = self._mode_semantics(current)
         if current.trading.paused:
             direct_use_profile = {
                 "status": "attention",
                 "detail": (
-                    "Web, config persistence, and manual demo controls are wired, but trading is currently paused. "
-                    f"Outstanding automatic-ingestion prerequisites: {', '.join(direct_use_missing) if direct_use_missing else 'none'}."
+                    f"{mode_semantics['profile_label']} 已接线完成，但交易当前处于暂停状态。"
+                    f" 当前缺少的自动采集前置项：{', '.join(direct_use_missing) if direct_use_missing else '无'}。"
                 ),
-                "action": "Fix the pause reason and resume trading before relying on the configured demo profile.",
+                "action": "先排除暂停原因，再恢复交易后使用当前画像。",
+            }
+        elif current.trading.mode == "live":
+            direct_use_profile = {
+                "status": "attention",
+                "detail": (
+                    "当前已展示实盘预备语义，但 live 执行仍被硬拦截。"
+                    " 现在只适合检查接线、就绪度、操作提示，以及 demo/shadow 准备情况。"
+                ),
+                "action": "继续只在 observe/demo/shadow 范围内验证，不要把当前构建视为可实盘下单。",
             }
         elif direct_use_missing:
             direct_use_profile = {
                 "status": "manual_ready",
                 "detail": (
-                    "The current profile is ready for direct manual/demo use: Web login, config edits, runtime artifacts, "
-                    "manual demo injection, and the configured operator/OKX paths that do not require inbound Telegram. "
-                    f"Full always-on automation is still blocked by: {', '.join(direct_use_missing)}."
+                    f"当前画像：{mode_semantics['operator_summary']}。"
+                    " 已具备 Web 登录、配置修改、运行时产物和手动信号注入能力；"
+                    f" 但持续自动化仍受限于：{', '.join(direct_use_missing)}。"
                 ),
-                "action": "Use the manual demo path now, then add an enabled public_web source channel and optional topic wiring before expecting the supported automatic signal flow.",
+                "action": "现在先走手动 demo/预演路径，再补 enabled public_web 频道和可选的话题接线。",
             }
         else:
             direct_use_profile = {
                 "status": "ready",
                 "detail": (
-                    "Web control, Telegram ingestion, operator-topic wiring, and demo-only execution are all configured "
-                    "for direct use in this build."
+                    f"当前画像：{mode_semantics['operator_summary']}。"
+                    " Web 控制、Telegram 自动采集、操作员话题接线和当前允许范围内的执行路径都已配置完成。"
                 ),
-                "action": "Keep validation on demo/simulated paths only and start the runtime for live source-channel monitoring.",
+                "action": "继续保持在 demo/模拟/预演范围内验证，并启动运行时观察真实源频道。",
             }
 
         return {
@@ -1673,8 +1723,9 @@ class Runtime:
         gaps = [item["id"] for item in snapshot.get("remaining_gaps", [])[:4]]
         return "\n".join(
             [
-                f"[status] 模式={snapshot['config']['trading']['mode']}/{snapshot['config']['trading']['execution_mode']}",
+                f"[status] 模式={snapshot['config']['trading']['mode']}/{snapshot['config']['trading']['execution_mode']} {snapshot['mode_semantics']['profile_label']}",
                 f"paused={snapshot['operator_state']['paused']} okx={snapshot['wiring']['okx_execution_path']} telegram={snapshot['wiring']['telegram_watch_mode']}",
+                f"语义={snapshot['mode_semantics']['operator_summary']}",
                 f"持仓={snapshot['dashboard']['positions_count']} 订单={len(snapshot['orders'])} 话题={snapshot['wiring']['topic_target'] or 'n/a'}",
                 f"最近对账={snapshot['operator_state']['last_reconcile']['status']}",
                 f"gaps={', '.join(gaps) if gaps else 'none'}",
@@ -1742,6 +1793,7 @@ class Runtime:
             [
                 f"[risk] paused={snapshot['operator_state']['paused']} close_only={trading['readonly_close_only']}",
                 f"leverage={trading['default_leverage']} margin={trading['margin_mode']} mode={trading['mode']}/{trading['execution_mode']}",
+                f"profile={snapshot['mode_semantics']['profile_label']} summary={snapshot['mode_semantics']['operator_summary']}",
                 f"global_tp_sl={trading['global_tp_sl_enabled']} tp={trading['global_take_profit_ratio']} sl={trading['global_stop_loss_ratio']}",
                 f"okx={health['okx_rest']['status']} topic={health['topic_logger']['status']} gaps={', '.join(gaps) if gaps else 'none'}",
             ]
@@ -1995,6 +2047,16 @@ class Runtime:
                 status = "observed"
                 payload = {"environment": "observe_only", "action": "close_all", "symbol": intent.symbol}
                 result_order_id = f"observe-close-{int(time.time())}"
+            elif self._is_shadow_mode(config):
+                status = "shadowed"
+                payload = {
+                    "environment": "shadow_mode",
+                    "execution_path": "shadow_mode",
+                    "action": "close_all",
+                    "symbol": intent.symbol,
+                    "reason": "Shadow mode previewed the close request without sending any order.",
+                }
+                result_order_id = f"shadow-close-{int(time.time())}"
             else:
                 try:
                     force_simulated_close = str(position.get("source") or "simulated_demo") != "local_expected"
@@ -2015,7 +2077,11 @@ class Runtime:
             close_path = (
                 (payload.get("execution_path") or payload.get("environment") or "unknown")
                 if isinstance(payload, dict)
-                else ("observe_only" if self._is_observe_only(config) else "unknown")
+                else (
+                    "observe_only"
+                    if self._is_observe_only(config)
+                    else ("shadow_mode" if self._is_shadow_mode(config) else "unknown")
+                )
             )
             self.log(
                 "info",
@@ -2350,7 +2416,75 @@ class Runtime:
     def _is_observe_only(self, config: AppConfig) -> bool:
         return config.trading.mode == "observe" or config.trading.execution_mode == "observe"
 
+    def _is_shadow_mode(self, config: AppConfig) -> bool:
+        return config.trading.mode == "shadow" and config.trading.execution_mode != "observe"
+
+    def _mode_semantics(self, config: AppConfig) -> dict[str, Any]:
+        mode = str(config.trading.mode or "")
+        execution_mode = str(config.trading.execution_mode or "")
+        if config.trading.paused:
+            runtime_status = "paused"
+            runtime_detail = "交易已暂停，当前不会推进任何执行动作"
+        elif mode == "live":
+            runtime_status = "blocked"
+            runtime_detail = "当前是实盘预备语义展示；live 执行仍被硬拦截"
+        elif self._is_observe_only(config):
+            runtime_status = "observe"
+            runtime_detail = "当前只做解析与风控记录，不会生成拟执行或下单动作"
+        elif mode == "shadow":
+            runtime_status = "shadow"
+            runtime_detail = "当前会做解析、风控和拟执行记录，但不会实际下单"
+        else:
+            runtime_status = "running"
+            runtime_detail = "当前会按演示路径推进执行；仅允许模拟或 OKX Demo"
+
+        profiles = {
+            "observe": {
+                "profile_key": "observe_only",
+                "profile_label": "观察模式",
+                "operator_summary": "真实信号只做解析与风控记录，不下单、不生成拟执行",
+                "user_prompt": "适合纯观察链路和解析验收。",
+            },
+            "demo": {
+                "profile_key": "demo_execution",
+                "profile_label": "演示模式",
+                "operator_summary": "信号可推进到模拟执行，若已配置 OKX 也仅允许 Demo 路径",
+                "user_prompt": "适合本地冒烟和 Demo 环境联调。",
+            },
+            "shadow": {
+                "profile_key": "shadow_preview",
+                "profile_label": "影子预演模式",
+                "operator_summary": "真实信号会走解析、风控、拟执行日志，但不会实际下单",
+                "user_prompt": "适合 live-ready 前的预演观察，避免误下单。",
+            },
+            "live": {
+                "profile_key": "live_ready_guarded",
+                "profile_label": "实盘预备模式",
+                "operator_summary": "仅展示 live-ready 接线与风险提示，实盘执行仍被硬拦截",
+                "user_prompt": "当前构建禁止 live，下单能力未开放。",
+            },
+        }
+        selected = dict(profiles.get(mode, profiles["demo"]))
+        if execution_mode == "observe" and mode != "observe":
+            selected["profile_key"] = f"{selected['profile_key']}_observe"
+            selected["operator_summary"] = f"{selected['profile_label']} 已切到仅观察执行入口，当前不会生成下单或拟执行动作"
+            selected["user_prompt"] = "当前 execution_mode=observe，会覆盖原模式的执行推进能力。"
+        selected.update(
+            {
+                "mode": mode,
+                "mode_label": self._topic_mode_label(mode),
+                "execution_mode": execution_mode,
+                "execution_mode_label": "自动推进" if execution_mode == "automatic" else "仅观察入口",
+                "runtime_status": runtime_status,
+                "runtime_detail": runtime_detail,
+                "live_guard_enabled": True,
+                "live_guard_detail": "本批仅做实盘预备基础建设；实盘执行继续被配置层与风控层双重硬拦截。",
+            }
+        )
+        return selected
+
     def _build_initial_health(self, config: AppConfig) -> dict[str, dict[str, str]]:
+        mode_semantics = self._mode_semantics(config)
         enabled_public_web_channels = [
             channel for channel in config.telegram.channels if channel.enabled and channel.source_type == "public_web"
         ]
@@ -2395,8 +2529,8 @@ class Runtime:
                 "updated_at": utc_now(),
             },
             "trading_runtime": {
-                "status": "paused" if config.trading.paused else ("observe" if self._is_observe_only(config) else "running"),
-                "detail": "Trading state initialized",
+                "status": "paused" if config.trading.paused else mode_semantics["runtime_status"],
+                "detail": mode_semantics["runtime_detail"] or "Trading state initialized",
                 "updated_at": utc_now(),
             },
             "reconciliation": {

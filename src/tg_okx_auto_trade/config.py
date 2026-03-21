@@ -16,6 +16,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = Path("config.json")
 EXAMPLE_CONFIG_PATH = PROJECT_ROOT / "config.example.json"
 SENSITIVE_KEYS = {"pin_hash", "bot_token", "api_key", "api_secret", "passphrase", "session_id"}
+TRADING_MODES = {"observe", "demo", "shadow", "live"}
+EXECUTION_MODES = {"automatic", "observe"}
 _ENV_LOCK = threading.RLock()
 _MANAGED_ENV_VALUES: dict[str, str] = {}
 
@@ -229,11 +231,13 @@ def validate_config(config: AppConfig) -> None:
         raise ValueError("trading.margin_mode must be isolated or cross")
     if config.trading.position_mode != "net":
         raise ValueError("trading.position_mode must be net in this demo-only build")
-    if config.trading.mode not in {"observe", "demo"}:
-        raise ValueError("trading.mode must be observe or demo in this demo-only build")
-    if config.trading.execution_mode not in {"automatic", "observe"}:
+    if config.trading.mode not in TRADING_MODES:
         raise ValueError(
-            "trading.execution_mode must be automatic or observe in this demo-only build"
+            "trading.mode must be one of observe, demo, shadow, or live in this live-ready groundwork build"
+        )
+    if config.trading.execution_mode not in EXECUTION_MODES:
+        raise ValueError(
+            "trading.execution_mode must be automatic or observe in this live-ready groundwork build"
         )
     if config.trading.live_trading_enabled:
         raise ValueError("trading.live_trading_enabled must remain false in this demo-only build")

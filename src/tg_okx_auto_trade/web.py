@@ -174,8 +174,8 @@ def _render_app_html(initial_view: str = "overview") -> str:
       const key = String(value == null ? '' : value);
       return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : (key || fallback);
     }
-    function displayTradingMode(value) { return pickLabel({observe:'观察模式', demo:'演示模式'}, value); }
-    function displayExecutionMode(value) { return pickLabel({automatic:'自动执行', observe:'仅观察'}, value); }
+    function displayTradingMode(value) { return pickLabel({observe:'观察模式', demo:'演示模式', shadow:'影子预演模式', live:'实盘预备模式'}, value); }
+    function displayExecutionMode(value) { return pickLabel({automatic:'自动推进', observe:'仅观察入口'}, value); }
     function displayThinking(value) { return pickLabel({off:'关闭', minimal:'极低', low:'低', medium:'中', high:'高', custom:'自定义'}, value); }
     function displayBool(value) { return String(value) === 'true' ? '是' : '否'; }
     function displaySecretSource(value) { return pickLabel({config:'配置文件', env:'本地环境变量', missing:'未配置'}, value, '未配置'); }
@@ -193,6 +193,7 @@ def _render_app_html(initial_view: str = "overview") -> str:
       return pickLabel({
         filled:'已成交', observed:'仅观察', submitted:'已提交', canceled:'已撤销', rejected:'已拒绝', failed:'失败',
         pending:'处理中', ignored:'已忽略', open:'进行中', closed:'已关闭', EXECUTED:'已执行', OBSERVED:'仅观察',
+        SHADOWED:'影子预演记录', shadowed:'影子预演记录',
         EXECUTION_FAILED:'执行失败', RISK_REJECTED:'风控拒绝', IGNORED:'已忽略', MANAGEMENT_SKIPPED:'管理消息已跳过', ERROR:'错误',
       }, value);
     }
@@ -246,6 +247,7 @@ def _render_app_html(initial_view: str = "overview") -> str:
         demoSignalText,
         nextDemoSignalMessageId,
         directUseProfile: ui.direct_use_profile || {status_label:'未提供', detail:'未提供', action:'未提供'},
+        modeSemantics: data.mode_semantics || data.wiring.mode_semantics || {},
         logs: data.logs.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.level)}</td><td>${esc(item.category)}</td><td>${esc(item.message)}</td></tr>`).join(''),
         auditLogs: data.audit_logs.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.category)}</td><td>${esc(item.message)}</td></tr>`).join(''),
         orders: data.orders.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.symbol)}</td><td>${esc(displayAction(item.action))}</td><td>${esc(displayRecordStatus(item.status))}</td><td>${esc(displayTradingMode(item.mode))}</td></tr>`).join(''),
@@ -264,12 +266,17 @@ def _render_app_html(initial_view: str = "overview") -> str:
         <section class="card card--wide" data-view-section="overview-summary"><h2>总览 / Dashboard</h2>
           <div class="key-grid">
             <div class="key-item"><strong>交易模式</strong><div>${esc(displayTradingMode(data.config.trading.mode))}</div></div>
-            <div class="key-item"><strong>执行模式</strong><div>${esc(displayExecutionMode(data.config.trading.execution_mode))}</div></div>
+            <div class="key-item"><strong>执行模式</strong><div>${esc(displayExecutionMode(data.config.trading.execution_mode))}</div><div class="muted">${esc(ctx.modeSemantics.execution_mode_label || '')}</div></div>
             <div class="key-item"><strong>盈亏</strong><div>${esc(data.dashboard.total_unrealized_pnl)} 未实现 / ${esc(data.dashboard.total_realized_pnl)} 已实现</div></div>
             <div class="key-item"><strong>持仓</strong><div>${esc(data.dashboard.positions_count)} 已开 / ${esc(data.dashboard.tracked_symbols_count || data.positions.length)} 已跟踪</div></div>
             <div class="key-item"><strong>话题目标</strong><div>${esc(data.wiring.topic_target || '未配置')}</div></div>
             <div class="key-item"><strong>话题发送</strong><div>${esc(data.wiring.topic_delivery_state)}${data.wiring.topic_delivery_verified ? ' / 已验证' : ''}</div></div>
           </div>
+        </section>
+        <section class="card"><h2>模式语义</h2>
+          <div><strong>${esc(ctx.modeSemantics.profile_label || displayTradingMode(data.config.trading.mode))}</strong></div>
+          <div class="section-lead">${esc(ctx.modeSemantics.operator_summary || '未提供')}</div>
+          <div class="muted">${esc(ctx.modeSemantics.user_prompt || '')}</div>
         </section>
         <section class="card"><h2>下一步</h2>
           <div>${esc(nextStep || ctx.directUseProfile.action || '当前无需额外操作。')}</div>
@@ -355,13 +362,14 @@ def _render_app_html(initial_view: str = "overview") -> str:
               <div class="field-grid">
                 <label class="field">
                   <span>交易模式</span>
-                  <select name="mode"><option value="observe" ${data.config.trading.mode==='observe'?'selected':''}>观察模式</option><option value="demo" ${data.config.trading.mode==='demo'?'selected':''}>演示模式</option></select>
+                  <select name="mode"><option value="observe" ${data.config.trading.mode==='observe'?'selected':''}>观察模式：只记录解析/风控</option><option value="demo" ${data.config.trading.mode==='demo'?'selected':''}>演示模式：允许模拟或 OKX Demo</option><option value="shadow" ${data.config.trading.mode==='shadow'?'selected':''}>影子预演：记录拟执行，不下单</option><option value="live" ${data.config.trading.mode==='live'?'selected':''}>实盘预备：仅展示 live-ready 语义，仍硬拦截</option></select>
                 </label>
                 <label class="field">
                   <span>执行模式</span>
-                  <select name="execution_mode"><option value="automatic" ${data.config.trading.execution_mode==='automatic'?'selected':''}>自动执行</option><option value="observe" ${data.config.trading.execution_mode==='observe'?'selected':''}>仅观察</option></select>
+                  <select name="execution_mode"><option value="automatic" ${data.config.trading.execution_mode==='automatic'?'selected':''}>自动推进</option><option value="observe" ${data.config.trading.execution_mode==='observe'?'selected':''}>仅观察入口</option></select>
                 </label>
               </div>
+              <div class="meta-item"><strong>当前语义</strong><div>${esc(data.mode_semantics.profile_label || '未提供')}</div><div class="muted">${esc(data.mode_semantics.operator_summary || '')} ${esc(data.mode_semantics.live_guard_detail || '')}</div></div>
               <div class="field-grid">
                 <label class="field">
                   <span>默认杠杆</span>
@@ -378,7 +386,7 @@ def _render_app_html(initial_view: str = "overview") -> str:
         </section>
         <section class="card card--wide"><h2>OKX 配置</h2>
           <div class="meta-list">
-            <div class="meta-item"><strong>当前执行入口</strong><div>${esc(data.wiring.okx_execution_path === 'real_demo_rest' ? '已配置 OKX Demo REST' : '模拟执行') }</div><div class="muted">${esc(okxSourceDetail)}</div></div>
+            <div class="meta-item"><strong>当前执行入口</strong><div>${esc(data.wiring.okx_execution_path === 'real_demo_rest' ? '已配置 OKX Demo REST' : '模拟执行') }</div><div class="muted">${esc(okxSourceDetail)} 当前模式语义：${esc(data.mode_semantics.operator_summary || '未提供')}</div></div>
             <div class="meta-item"><strong>当前凭证状态</strong><div>${esc(okxCredentialsConfigured ? '已配置' : '未配置')} / ${esc(displaySecretSource(okxCredentialSource))}</div><div class="muted">本地 .env 路径：${esc(data.run_paths.local_env_path || '未提供')}</div></div>
           </div>
           <form id="okxSettingsForm">
@@ -702,7 +710,8 @@ def _render_app_html(initial_view: str = "overview") -> str:
     }
     function render(data) {
       window.currentState = data;
-      document.getElementById('modeBox').textContent = displayTradingMode(data.config.trading.mode) + ' / ' + displayExecutionMode(data.config.trading.execution_mode);
+      const modeSummary = data.mode_semantics && data.mode_semantics.profile_label ? data.mode_semantics.profile_label : displayTradingMode(data.config.trading.mode);
+      document.getElementById('modeBox').textContent = modeSummary + ' / ' + displayExecutionMode(data.config.trading.execution_mode);
       document.getElementById('webBindBox').textContent = data.wiring.web_server_active ? ('当前监听 ' + data.wiring.web_bind) : ('配置监听 ' + data.wiring.web_bind);
       const activeView = getCurrentView();
       renderNav(activeView);
@@ -1009,6 +1018,7 @@ _STATUS_LABELS = {
     "running": "运行中",
     "paused": "已暂停",
     "observe": "观察模式",
+    "shadow": "影子预演",
     "not_connected": "未连接",
     "missing_target": "缺少目标",
     "sent": "已发送",
@@ -1113,6 +1123,7 @@ _TELEGRAM_MODE_LABELS = {
 _EXECUTION_PATH_LABELS = {
     "simulated_demo": "模拟 Demo 路径",
     "real_demo_rest": "已配置 OKX Demo REST 路径",
+    "shadow_mode": "影子预演路径",
 }
 
 _OKX_ACTION_LABELS = {
@@ -1814,6 +1825,8 @@ def _localized_direct_use_text(snapshot: dict) -> str:
         f"- 话题出站: {_status_label(activation.get('operator_topic_outbound', {}).get('status', 'unknown'))}",
         f"- 话题入站: {_status_label(activation.get('operator_topic_inbound', {}).get('status', 'unknown'))}",
         f"- 仅演示防护: {_status_label(activation.get('demo_only_guard', {}).get('status', 'unknown'))}",
+        f"- 当前模式: {_localize_operator_text(snapshot.get('mode_semantics', {}).get('profile_label', ''))}",
+        f"- 模式语义: {_localize_operator_text(snapshot.get('mode_semantics', {}).get('operator_summary', ''))}",
         f"- 画像说明: {_localize_operator_text(capabilities.get('current_operating_profile', {}).get('detail', ''))}",
         f"- 下一步操作: {_localize_operator_text(capabilities.get('current_operating_profile', {}).get('action', ''))}",
         "",
@@ -1955,6 +1968,9 @@ def _web_display(snapshot: dict) -> dict:
         "overview": {
             "runtime_status": "已暂停" if snapshot.get("operator_state", {}).get("paused") else _status_label(snapshot.get("health", {}).get("trading_runtime", {}).get("status", "")),
             "last_reconcile_detail": _localize_operator_text(snapshot.get("operator_state", {}).get("last_reconcile", {}).get("detail", "")),
+            "mode_profile_label": _localize_operator_text(snapshot.get("mode_semantics", {}).get("profile_label", "")),
+            "mode_operator_summary": _localize_operator_text(snapshot.get("mode_semantics", {}).get("operator_summary", "")),
+            "mode_live_guard_detail": _localize_operator_text(snapshot.get("mode_semantics", {}).get("live_guard_detail", "")),
             "okx_execution_path": _label(_EXECUTION_PATH_LABELS, snapshot.get("wiring", {}).get("okx_execution_path", ""), "未提供"),
             "configured_okx_supported_actions": _localize_okx_actions(snapshot.get("wiring", {}).get("configured_okx_supported_actions", [])),
             "manual_signal_paths": (
