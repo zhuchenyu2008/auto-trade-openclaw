@@ -82,6 +82,8 @@ class OKXGateway:
         api_key, _, _ = resolve_okx_credentials(self.config)
         if force_simulated:
             return self._execute_simulated(intent)
+        if intent.action == "update_protection" and self.config.okx.enabled and api_key:
+            return self._execute_local_only_protection_update(intent)
         if self.config.okx.enabled and not self.config.okx.use_demo:
             raise RuntimeError("Live OKX mode is disabled in this demo-only build")
         if self.config.okx.enabled and api_key:
@@ -94,7 +96,12 @@ class OKXGateway:
         symbol = intent.symbol
         existing, qty = self._apply_intent_to_position(intent)
         existing["source"] = "simulated_demo"
-        state = "canceled" if intent.action == "cancel_orders" else "filled"
+        if intent.action == "cancel_orders":
+            state = "canceled"
+        elif intent.action == "update_protection":
+            state = "updated"
+        else:
+            state = "filled"
         return ExecutionResult(
             status=state,
             exchange_order_id=order_id,
@@ -110,6 +117,32 @@ class OKXGateway:
                 "lever": intent.leverage,
                 "protection": existing.get("protection", {}),
                 "attached_algo_orders": _attached_algo_orders(existing.get("protection", {})),
+            },
+            position_snapshot=existing.copy(),
+        )
+
+    def _execute_local_only_protection_update(self, intent: TradingIntent) -> ExecutionResult:
+        self._counter += 1
+        order_id = f"local-{self._counter:06d}"
+        existing, _qty = self._apply_intent_to_position(intent)
+        existing["source"] = "local_expected"
+        return ExecutionResult(
+            status="updated",
+            exchange_order_id=order_id,
+            payload={
+                "environment": "configured_demo_local_only",
+                "execution_path": "local_state_only",
+                "instId": intent.symbol,
+                "ordId": order_id,
+                "state": "updated",
+                "side": intent.side,
+                "action": intent.action,
+                "sz": 0.0,
+                "lever": intent.leverage,
+                "protection": existing.get("protection", {}),
+                "attached_algo_orders": _attached_algo_orders(existing.get("protection", {})),
+                "capability_scope": "local_state_only",
+                "reason": "当前构建暂未把管理类保护更新下发到 OKX demo REST，已仅在本地运行态更新保护语义。",
             },
             position_snapshot=existing.copy(),
         )
@@ -498,7 +531,7 @@ class OKXGateway:
             existing["exchange_protection_orders"] = []
         elif intent.action == "update_protection":
             qty = 0.0
-            existing["protection"] = _protection_payload(intent)
+            existing["protection"] = _merge_protection(existing.get("protection", {}), intent)
             existing["exchange_protection_orders"] = _attached_algo_orders(existing["protection"])
         else:
             raise RuntimeError(f"Action {intent.action} is not supported by the OKX gateway in this build")
@@ -663,6 +696,25 @@ def _protection_payload(intent: TradingIntent) -> dict[str, Any]:
     if intent.trailing:
         payload["trailing"] = dict(intent.trailing)
     return payload
+
+
+def _merge_protection(existing: dict[str, Any] | None, intent: TradingIntent) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    current = existing if isinstance(existing, dict) else {}
+    if current.get("tp"):
+        merged["tp"] = list(current.get("tp") or [])
+    if current.get("sl"):
+        merged["sl"] = dict(current.get("sl") or {})
+    if current.get("trailing"):
+        merged["trailing"] = dict(current.get("trailing") or {})
+    next_payload = _protection_payload(intent)
+    if "tp" in next_payload:
+        merged["tp"] = list(next_payload["tp"])
+    if "sl" in next_payload:
+        merged["sl"] = dict(next_payload["sl"])
+    if "trailing" in next_payload:
+        merged["trailing"] = dict(next_payload["trailing"])
+    return merged
 
 
 def _attached_algo_orders(protection: dict[str, Any]) -> list[dict[str, Any]]:

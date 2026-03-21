@@ -111,9 +111,15 @@ class RiskEngine:
         return hashlib.sha256(json.dumps(body, sort_keys=True).encode("utf-8")).hexdigest()
 
     def _is_management_message(self, message: NormalizedMessage, intent: TradingIntent) -> bool:
+        if intent.action == "update_protection" and intent.executable and intent.symbol and (intent.tp or intent.sl or intent.trailing):
+            return False
+        if intent.action in {"close_all", "reduce_long", "reduce_short", "cancel_orders"} and intent.executable and intent.symbol:
+            return False
         if intent.action == "update_protection":
             return True
         content = message.content_text().upper()
+        if intent.action != "ignore":
+            return False
         if any(keyword in content for keyword in ("止盈", "止损", "保本", "保护", "调保护", "减仓", "平一半", "PARTIAL", "BREAKEVEN")):
             return True
         combined_reason = " ".join(

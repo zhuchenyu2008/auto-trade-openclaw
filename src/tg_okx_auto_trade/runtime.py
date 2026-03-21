@@ -264,7 +264,7 @@ class Runtime:
         config = self.config_manager.get()
         positions = self.okx.positions()
         recent_messages = self.storage.recent_messages(
-            limit=5,
+            limit=8,
             chat_id=message.chat_id,
             exclude=(message.chat_id, message.message_id, message.version),
         )
@@ -335,7 +335,7 @@ class Runtime:
             self.storage.save_position_snapshot(execution_intent.symbol, result.position_snapshot)
         self.storage.update_message_status(message.chat_id, message.message_id, message.version, "EXECUTED")
         self.log("info", "execution", "Order executed", {"order_id": result.exchange_order_id, "status": result.status, "symbol": execution_intent.symbol})
-        self._send_topic_update(self._topic_trade_message(config.trading.mode, execution_intent, result.status, result.exchange_order_id))
+        self._send_topic_update(self._topic_trade_message(config.trading.mode, execution_intent, result.status, result.exchange_order_id, result.payload))
 
     def inject_message(
         self,
@@ -437,6 +437,7 @@ class Runtime:
         return {
             "observed": "仅观察记录",
             "filled": "已成交",
+            "updated": "已更新",
             "submitted": "已提交",
             "canceled": "已撤销",
             "rejected": "已拒绝",
@@ -490,12 +491,22 @@ class Runtime:
             f"[执行失败] {self._topic_action_label(intent.action)} {intent.symbol} 失败：{exc}"
         )
 
-    def _topic_trade_message(self, mode: str, intent: TradingIntent, status: str, exchange_order_id: str | None) -> str:
+    def _topic_trade_message(
+        self,
+        mode: str,
+        intent: TradingIntent,
+        status: str,
+        exchange_order_id: str | None,
+        payload: dict[str, Any] | None = None,
+    ) -> str:
         order_suffix = f"（订单号 {exchange_order_id}）" if exchange_order_id else ""
-        return (
+        message = (
             f"[交易] {self._topic_mode_label(mode)} / {self._topic_action_label(intent.action)} "
             f"{intent.symbol}，状态：{self._topic_status_label(status)}{order_suffix}"
         )
+        if isinstance(payload, dict) and payload.get("capability_scope") == "local_state_only":
+            message = f"{message}；当前仅更新本地保护状态，未下发 OKX 保护单"
+        return message
 
     def log(self, level: str, category: str, message: str, payload: dict[str, Any] | None = None, audit: bool = False) -> None:
         self.storage.log(level, category, message, payload, audit=audit)

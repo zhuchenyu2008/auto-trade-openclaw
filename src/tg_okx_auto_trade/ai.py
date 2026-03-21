@@ -20,7 +20,7 @@ class OpenClawAI:
     def parse(self, message: NormalizedMessage, recent_messages: list[dict[str, Any]], account_state: dict[str, Any]) -> TradingIntent:
         prompt = self._build_prompt(message, recent_messages, account_state)
         if self.config.ai.provider == "heuristic":
-            intent = self._heuristic_parse(message)
+            intent = self._heuristic_parse(message, recent_messages, account_state)
             intent.raw.setdefault("parser_source", "heuristic")
             intent.raw.setdefault("requested_provider", self.config.ai.provider)
             return intent
@@ -34,7 +34,7 @@ class OpenClawAI:
             payload.setdefault("requested_provider", self.config.ai.provider)
             return self._intent_from_payload(payload)
         except Exception as exc:
-            intent = self._heuristic_parse(message)
+            intent = self._heuristic_parse(message, recent_messages, account_state)
             intent.raw["parser_source"] = "heuristic_fallback"
             intent.raw["requested_provider"] = self.config.ai.provider
             intent.raw["provider_error"] = f"{type(exc).__name__}: {exc}"
@@ -136,6 +136,7 @@ class OpenClawAI:
         current_text = message.content_text()
         current_upper = current_text.upper()
         current_symbol = _extract_symbol(current_upper)
+        inferred_context = _infer_trade_context(current_text, recent_messages, account_state)
         recent_items = [self._summarize_recent_message(item, current_symbol=current_symbol) for item in recent_messages[-6:]]
         same_symbol = [item for item in recent_items if item.get("symbol") and item.get("symbol") == current_symbol]
         recent_trade = [item for item in recent_items if item.get("role") in {"trade_entry", "position_change"}]
@@ -169,11 +170,12 @@ class OpenClawAI:
                 "message_id": message.message_id,
                 "event_type": message.event_type,
                 "version": message.version,
-                "symbol_hint": current_symbol or "",
+                "symbol_hint": current_symbol or str(inferred_context.get("symbol") or ""),
                 "role_hint": self._classify_message_role(current_upper),
                 "text": current_text[:280],
             },
             "recent_context": {
+                "active_trade_hint": inferred_context,
                 "same_symbol_messages": same_symbol[-3:],
                 "recent_trade_messages": recent_trade[-3:],
                 "recent_management_messages": management_updates[-3:],
@@ -212,25 +214,48 @@ class OpenClawAI:
             return "broadcast_or_ignore"
         return "unknown"
 
-    def _heuristic_parse(self, message: NormalizedMessage) -> TradingIntent:
+    def _heuristic_parse(
+        self,
+        message: NormalizedMessage,
+        recent_messages: list[dict[str, Any]],
+        account_state: dict[str, Any],
+    ) -> TradingIntent:
         text = message.content_text().strip()
         upper = text.upper()
-        symbol = _extract_symbol(upper)
+        context = _infer_trade_context(text, recent_messages, account_state)
+        symbol = _extract_symbol(upper) or _extract_symbol(text) or str(context.get("symbol") or "")
+        context_side = str(context.get("side") or "flat")
+        context_qty = float(context.get("qty") or 0.0)
         leverage = _extract_leverage(upper) or self.config.trading.default_leverage
         size_value = _extract_size_value(upper) or 100.0
-        tp = _extract_protection_levels(upper, ("TP", "TAKE PROFIT", "TARGET"))
-        sl = _extract_single_level(upper, ("SL", "STOP LOSS", "STOP"))
+        tp = _extract_protection_levels(text, ("TP", "TAKE PROFIT", "TARGET", "止盈"))
+        sl = _extract_single_level(text, ("SL", "STOP LOSS", "STOP", "止损"))
         trailing = _extract_single_level(upper, ("TRAILING", "TS"))
         if trailing is not None:
             trailing = {"trigger": trailing}
         is_long_bias = any(word in upper for word in ("LONG", "BUY", "BULL", "市价多", "做多", "开多", "看多"))
         is_short_bias = any(word in upper for word in ("SHORT", "SELL", "BEAR", "市价空", "做空", "开空", "看空"))
+        if not is_long_bias and not is_short_bias:
+            if context_side == "long":
+                is_long_bias = True
+            elif context_side == "short":
+                is_short_bias = True
         has_trade_open_keyword = any(word in upper for word in ("LONG", "SHORT", "BUY", "SELL", "ADD", "REVERSE", "FLIP", "市价多", "市价空", "做多", "做空", "开多", "开空"))
         has_protection_update = any(
             word in upper for word in ("PROTECTION", "STOP LOSS", "TAKE PROFIT", " TRAILING", "UPDATE TP", "UPDATE SL", "止盈", "止损")
         )
-        has_management_only_text = any(word in upper for word in ("止盈", "止损", "保本", "拿下", "触发", "浮盈中", "底仓"))
-        if "IGNORE" in upper or not upper or ((not symbol or not has_trade_open_keyword) and has_management_only_text):
+        has_reduce_keyword = any(word in upper for word in ("REDUCE", "PARTIAL", "减仓", "平一半", "平半", "减半"))
+        has_close_keyword = any(word in upper for word in ("CLOSE", "出局", "平仓", "全平", "离场"))
+        has_management_only_text = any(word in upper for word in ("止盈", "止损", "保本", "拿下", "触发", "浮盈中", "底仓", "保护"))
+        if has_reduce_keyword and _has_half_reduce_hint(upper) and context_qty > 0:
+            size_value = round(max(context_qty / 2.0, 0.0), 4)
+        if "IGNORE" in upper or not upper or (
+            (not symbol or not has_trade_open_keyword)
+            and has_management_only_text
+            and not has_protection_update
+            and not has_reduce_keyword
+            and not has_close_keyword
+        ):
             payload = {
                 "executable": False,
                 "action": "ignore",
@@ -301,22 +326,22 @@ class OpenClawAI:
             action = "cancel_orders"
             side = "flat"
             reason = "Heuristic parser inferred an order cancel request."
-        elif has_protection_update and not has_trade_open_keyword and "CLOSE" not in upper and "REDUCE" not in upper:
+        elif has_protection_update and not has_trade_open_keyword and not has_close_keyword and not has_reduce_keyword:
             action = "update_protection"
             side = "flat"
-            reason = "Heuristic parser inferred a protection update."
+            reason = "Heuristic parser inferred a protection update within the current trade context."
         elif "REVERSE" in upper or "FLIP" in upper:
             action = "reverse_to_short" if is_short_bias else "reverse_to_long"
             side = "sell" if is_short_bias else "buy"
             reason = "Heuristic parser inferred a position reversal."
-        elif "REDUCE" in upper or "PARTIAL" in upper:
+        elif has_reduce_keyword:
             action = "reduce_short" if is_short_bias else "reduce_long"
             side = "buy" if is_short_bias else "sell"
-            reason = "Heuristic parser inferred a position reduction."
-        elif "CLOSE" in upper:
+            reason = "Heuristic parser inferred a position reduction within the current trade context."
+        elif has_close_keyword:
             action = "close_all"
             side = "flat"
-            reason = "Heuristic parser inferred a close-all request."
+            reason = "Heuristic parser inferred a close-all request within the current trade context."
         elif "ADD" in upper:
             action = "add_short" if is_short_bias else "add_long"
             side = "sell" if is_short_bias else "buy"
@@ -339,6 +364,8 @@ class OpenClawAI:
             "require_manual_confirmation": False,
             "confidence": 0.55,
             "reason": reason,
+            "context_symbol": str(context.get("symbol") or ""),
+            "context_side": context_side,
         }
         return self._intent_from_payload(payload)
 
@@ -463,6 +490,22 @@ def _extract_symbol(text: str) -> str | None:
     match = re.search(r"#([A-Z][A-Z0-9]{1,14})\b", text)
     if match:
         return f"{match.group(1)}-USDT-SWAP"
+    alias_map = {
+        "比特币": "BTC-USDT-SWAP",
+        "BTC": "BTC-USDT-SWAP",
+        "以太坊": "ETH-USDT-SWAP",
+        "ETH": "ETH-USDT-SWAP",
+        "狗狗币": "DOGE-USDT-SWAP",
+        "DOGE": "DOGE-USDT-SWAP",
+        "艾达": "ADA-USDT-SWAP",
+        "ADA": "ADA-USDT-SWAP",
+        "索拉纳": "SOL-USDT-SWAP",
+        "SOL": "SOL-USDT-SWAP",
+    }
+    raw_text = str(text or "")
+    for alias, symbol in alias_map.items():
+        if alias in raw_text:
+            return symbol
     return None
 
 
@@ -489,7 +532,7 @@ def _extract_size_value(text: str) -> float | None:
 def _extract_protection_levels(text: str, labels: tuple[str, ...]) -> list[dict[str, Any]]:
     levels = []
     for label in labels:
-        pattern = rf"{re.escape(label)}\s*[:=]?\s*(\d+(?:\.\d+)?)"
+        pattern = rf"{re.escape(label)}\s*\d*\s*[:=：-]?\s*(\d+(?:\.\d+)?)"
         for match in re.finditer(pattern, text):
             levels.append({"trigger": float(match.group(1))})
     return levels
@@ -497,8 +540,80 @@ def _extract_protection_levels(text: str, labels: tuple[str, ...]) -> list[dict[
 
 def _extract_single_level(text: str, labels: tuple[str, ...]) -> float | None:
     for label in labels:
-        pattern = rf"{re.escape(label)}\s*[:=]?\s*(\d+(?:\.\d+)?)"
+        pattern = rf"{re.escape(label)}\s*\d*\s*[:=：-]?\s*(\d+(?:\.\d+)?)"
         match = re.search(pattern, text)
         if match:
             return float(match.group(1))
     return None
+
+
+def _infer_trade_context(
+    text: str,
+    recent_messages: list[dict[str, Any]],
+    account_state: dict[str, Any],
+) -> dict[str, Any]:
+    symbol = _extract_symbol(text.upper()) or _extract_symbol(text)
+    positions = account_state.get("positions") if isinstance(account_state, dict) else []
+    normalized_positions: list[dict[str, Any]] = []
+    if isinstance(positions, list):
+        for item in positions:
+            if not isinstance(item, dict):
+                continue
+            payload = item.get("payload") if isinstance(item.get("payload"), dict) else item
+            normalized_positions.append(
+                {
+                    "symbol": str(payload.get("symbol") or ""),
+                    "side": str(payload.get("side") or "flat"),
+                    "qty": float(payload.get("qty") or payload.get("pos") or payload.get("quantity") or 0.0),
+                }
+            )
+    if symbol:
+        matched = next((item for item in normalized_positions if item["symbol"] == symbol and item["side"] != "flat"), None)
+        if matched:
+            return matched
+    if not symbol:
+        recent_symbol = _infer_symbol_from_recent_messages(recent_messages)
+        open_positions = [item for item in normalized_positions if item["side"] != "flat" and item["symbol"]]
+        if recent_symbol:
+            symbol = recent_symbol
+        elif len(open_positions) == 1:
+            symbol = open_positions[0]["symbol"]
+    if symbol:
+        matched = next((item for item in normalized_positions if item["symbol"] == symbol), None)
+        if matched:
+            return matched
+        return {
+            "symbol": symbol,
+            "side": _infer_side_from_recent_messages(recent_messages, symbol),
+            "qty": 0.0,
+        }
+    if len(normalized_positions) == 1:
+        return normalized_positions[0]
+    return {"symbol": "", "side": "flat", "qty": 0.0}
+
+
+def _infer_symbol_from_recent_messages(recent_messages: list[dict[str, Any]]) -> str:
+    for item in reversed(recent_messages[-6:]):
+        text = str(item.get("text") or item.get("caption") or "").strip()
+        symbol = _extract_symbol(text.upper()) or _extract_symbol(text)
+        if symbol:
+            return symbol
+    return ""
+
+
+def _infer_side_from_recent_messages(recent_messages: list[dict[str, Any]], symbol: str) -> str:
+    for item in reversed(recent_messages[-6:]):
+        text = str(item.get("text") or item.get("caption") or "").strip()
+        upper = text.upper()
+        item_symbol = _extract_symbol(upper) or _extract_symbol(text)
+        if symbol and item_symbol and item_symbol != symbol:
+            continue
+        if any(word in upper for word in ("SHORT", "SELL", "开空", "做空", "市价空")):
+            return "short"
+        if any(word in upper for word in ("LONG", "BUY", "开多", "做多", "市价多")):
+            return "long"
+    return "flat"
+
+
+def _has_half_reduce_hint(text: str) -> bool:
+    return any(keyword in text for keyword in ("HALF", "1/2", "一半", "半仓", "平半"))

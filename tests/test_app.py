@@ -193,6 +193,16 @@ class AppTests(unittest.TestCase):
         self.assertEqual(intent.size_value, 1.0)
         self.assertFalse(intent.require_manual_confirmation)
 
+    def test_ai_parses_multiple_take_profit_levels_from_single_message(self):
+        intent = self.runtime.ai.parse(
+            self._message("BTCUSDT 止盈1：74500 止盈2：75000 止盈3：75500 止损：73000"),
+            [],
+            {},
+        )
+        self.assertEqual(intent.action, "update_protection")
+        self.assertEqual([item["trigger"] for item in intent.tp], [74500.0, 75000.0, 75500.0])
+        self.assertEqual(intent.sl["trigger"], 73000.0)
+
     def test_snapshot_exposes_recent_pipeline_state(self):
         self.runtime.process_message(self._message("LONG BTCUSDT"))
         snapshot = self.runtime.snapshot()
@@ -1378,11 +1388,50 @@ class AppTests(unittest.TestCase):
         self.assertEqual(emitted, 0)
         callback.assert_not_called()
 
-    def test_management_message_status_is_not_risk_rejected(self):
-        self.runtime.process_message(self._message("BTCUSDT 止盈：74500"))
+    def test_management_message_without_context_is_management_skipped(self):
+        self.runtime.process_message(self._message("止盈：74500"))
         snapshot = self.runtime.snapshot()
         self.assertEqual(snapshot["messages"][0]["status"], "MANAGEMENT_SKIPPED")
         self.assertEqual(snapshot["orders"], [])
+
+    def test_management_protection_update_executes_on_simulated_path(self):
+        self.runtime.process_message(self._message("LONG BTCUSDT TP 74500 SL 73000"))
+        self.runtime.process_message(self._message("BTCUSDT 止盈1：75000 止盈2：76000 止损：73500", version=2))
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["messages"][0]["status"], "EXECUTED")
+        self.assertEqual(snapshot["orders"][0]["status"], "updated")
+        protection = snapshot["positions"][0]["payload"]["protection"]
+        self.assertEqual([item["trigger"] for item in protection["tp"]], [75000.0, 76000.0])
+        self.assertEqual(protection["sl"]["trigger"], 73500.0)
+
+    def test_management_protection_update_with_configured_okx_stays_local_only(self):
+        self.runtime.update_config(
+            {
+                "okx": {
+                    "enabled": True,
+                    "api_key": "api-key",
+                    "api_secret": "api-secret",
+                    "passphrase": "passphrase",
+                }
+            }
+        )
+        self.runtime.process_message(self._message("LONG BTCUSDT TP 74500 SL 73000"), force_simulated=True)
+        with mock.patch.object(self.runtime.okx, "_request", side_effect=AssertionError("should not call OKX REST for protection update")):
+            self.runtime.process_message(self._message("BTCUSDT 止盈1：75000 止盈2：76000 止损：73500", version=2))
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["orders"][0]["payload"]["execution_path"], "local_state_only")
+        self.assertEqual(snapshot["orders"][0]["payload"]["capability_scope"], "local_state_only")
+
+    def test_contextual_management_chain_reduces_then_closes_position(self):
+        self.runtime.process_message(self._message("LONG BTCUSDT size 40"))
+        self.runtime.process_message(self._message("求稳的可以平一半", version=2))
+        mid_snapshot = self.runtime.snapshot()
+        self.assertEqual(mid_snapshot["orders"][0]["payload"]["action"], "reduce_long")
+        self.assertEqual(mid_snapshot["positions"][0]["payload"]["qty"], 20.0)
+        self.runtime.process_message(self._message("比特币出局", version=3))
+        snapshot = self.runtime.snapshot()
+        self.assertEqual(snapshot["orders"][0]["payload"]["action"], "close_all")
+        self.assertEqual(snapshot["positions"][0]["payload"]["side"], "flat")
 
     def test_runtime_topic_risk_broadcast_uses_chinese_template(self):
         self.runtime.update_config({"trading": {"readonly_close_only": True}})
