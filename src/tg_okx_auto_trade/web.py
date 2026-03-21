@@ -1677,9 +1677,23 @@ def _web_display(snapshot: dict) -> dict:
     }
 
 
-LOGIN_HTML = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>登录</title><style>body{font-family:Georgia,serif;background:#f6f2ea;display:grid;place-items:center;height:100vh;margin:0}form{background:#fffdf8;border:1px solid #e7d8c6;border-radius:18px;padding:28px;display:grid;gap:12px;min-width:280px}input,button{font:inherit;padding:12px;border-radius:10px;border:1px solid #d8c7b1}button{background:#d45500;color:#fff;border:none}</style></head>
-<body><form method="post" action="/login"><h2>6 位 PIN</h2><input name="pin" pattern="[0-9]{6}" maxlength="6" minlength="6" inputmode="numeric" autofocus><button>登录</button></form></body></html>"""
+def _escape_login_html(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _render_login_html(error: str = "", pin: str = "") -> str:
+    error_html = ""
+    if error:
+        error_html = f'<div class="error" role="alert">{_escape_login_html(error)}</div>'
+    pin_value = _escape_login_html(pin)
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登录</title><style>body{{font-family:Georgia,serif;background:#f6f2ea;display:grid;place-items:center;height:100vh;margin:0}}form{{background:#fffdf8;border:1px solid #e7d8c6;border-radius:18px;padding:28px;display:grid;gap:12px;min-width:280px}}input,button{{font:inherit;padding:12px;border-radius:10px;border:1px solid #d8c7b1}}button{{background:#d45500;color:#fff;border:none}}.error{{background:#fff1e8;border:1px solid #f0b38a;color:#8a3b00;padding:10px 12px;border-radius:10px}}</style></head>
+<body><form method="post" action="/login"><h2>6 位 PIN</h2>{error_html}<input name="pin" pattern="[0-9]{{6}}" maxlength="6" minlength="6" inputmode="numeric" autofocus value="{pin_value}"><button>登录</button></form></body></html>"""
 
 
 class WebController:
@@ -1706,7 +1720,7 @@ class WebController:
         if path == "/login":
             if self._require_auth(headers):
                 return HTTPStatus.SEE_OTHER, {"Location": "/"}, ""
-            return HTTPStatus.OK, {"Content-Type": "text/html; charset=utf-8"}, LOGIN_HTML
+            return HTTPStatus.OK, {"Content-Type": "text/html; charset=utf-8"}, _render_login_html()
         if path == "/healthz":
             snapshot = self.runtime.health_snapshot()
             overall = "ok" if all(item["status"] not in {"error", "fail"} for item in snapshot.values()) else "error"
@@ -1737,17 +1751,33 @@ class WebController:
     ) -> tuple[int, dict[str, str], str | dict]:
         if path == "/login":
             if self._is_rate_limited(client_ip):
-                return HTTPStatus.TOO_MANY_REQUESTS, {}, {"error": "登录尝试过多"}
+                return (
+                    HTTPStatus.TOO_MANY_REQUESTS,
+                    {"Content-Type": "text/html; charset=utf-8"},
+                    _render_login_html("登录尝试过多，请稍后再试。"),
+                )
             form = parse_qs(body.decode("utf-8"))
             pin = form.get("pin", [""])[0]
-            session_id = self.runtime.authenticate(pin)
+            try:
+                session_id = self.runtime.authenticate(pin)
+            except ValueError as exc:
+                return (
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"Content-Type": "text/html; charset=utf-8"},
+                    _render_login_html(str(exc), pin),
+                )
             if not session_id:
                 self._record_failed_attempt(client_ip)
-                return HTTPStatus.UNAUTHORIZED, {}, {"error": "PIN 无效"}
+                return (
+                    HTTPStatus.UNAUTHORIZED,
+                    {"Content-Type": "text/html; charset=utf-8"},
+                    _render_login_html("PIN 无效", pin),
+                )
             cookie = http.cookies.SimpleCookie()
             cookie["session"] = session_id
             cookie["session"]["path"] = "/"
             cookie["session"]["httponly"] = True
+            cookie["session"]["samesite"] = "Lax"
             return HTTPStatus.SEE_OTHER, {"Set-Cookie": cookie.output(header="").strip(), "Location": "/"}, ""
 
         if not self._require_auth(headers):

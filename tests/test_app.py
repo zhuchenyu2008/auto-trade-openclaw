@@ -3018,6 +3018,57 @@ class AppTests(unittest.TestCase):
         self.assertEqual(headers["Location"], "/")
         self.assertEqual(payload, "")
 
+    def test_web_login_uses_env_pin_when_pin_hash_is_empty(self):
+        config_payload = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
+        config_payload["web"]["pin_hash"] = ""
+        (self.root / "config.json").write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
+        (self.root / ".env").write_text("TG_OKX_WEB_PIN=123456\n", encoding="utf-8")
+
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+
+        status, headers, payload = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        self.assertEqual(headers["Location"], "/")
+        self.assertIn("SameSite=Lax", headers["Set-Cookie"])
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, payload = controller.route("GET", "/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn("Telegram OKX Auto Trade", payload)
+
+    def test_web_login_returns_html_error_when_pin_is_not_configured(self):
+        config_payload = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
+        config_payload["web"]["pin_hash"] = ""
+        config_payload["web"]["pin_plaintext_env"] = "TEST_ONLY_MISSING_WEB_PIN"
+        (self.root / "config.json").write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
+        env_path = self.root / ".env"
+        if env_path.exists():
+            env_path.unlink()
+
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+
+        status, headers, payload = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 500)
+        self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
+        self.assertIn("Missing web PIN", payload)
+        self.assertIn("TEST_ONLY_MISSING_WEB_PIN", payload)
+
     def test_web_homepage_html_avoids_optional_chaining_and_nullish_coalescing(self):
         runtime = Runtime(self.root / "config.json")
         self.addCleanup(runtime.stop)
