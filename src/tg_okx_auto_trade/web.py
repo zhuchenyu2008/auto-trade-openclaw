@@ -6,7 +6,7 @@ import re
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
 from .config import public_config_dict
 from .runtime import (
@@ -17,34 +17,77 @@ from .runtime import (
 )
 
 
-HTML = """<!doctype html>
+_VALID_WEB_VIEWS = ("overview", "actions", "settings", "channels", "runtime")
+
+
+def _normalize_web_view(value: str) -> str:
+    return value if value in _VALID_WEB_VIEWS else "overview"
+
+
+def _render_app_html(initial_view: str = "overview") -> str:
+    html = """<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TG OKX Auto Trade</title>
   <style>
-    :root { --bg:#f6f2ea; --ink:#1b1d1f; --accent:#d45500; --card:#fffdf8; --line:#e7d8c6; --muted:#6f665e; }
-    body{font-family:Georgia,serif;background:linear-gradient(180deg,#efe6d8, #f8f5ef 30%, #f0ebe2);color:var(--ink);margin:0}
-    header{padding:20px 24px;border-bottom:1px solid var(--line);background:rgba(255,253,248,.85);position:sticky;top:0;backdrop-filter: blur(8px)}
-    main{padding:20px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 10px 25px rgba(78,54,28,.08)}
-    .card--channels{grid-column:1/-1;min-width:0}
-    h1,h2{margin:0 0 12px 0}
-    .hero{display:flex;justify-content:space-between;gap:16px;align-items:end}
+    :root { --bg:#f6f2ea; --ink:#1b1d1f; --accent:#d45500; --accent-soft:#fff1e8; --card:#fffdf8; --line:#e7d8c6; --muted:#6f665e; --shadow:0 14px 34px rgba(78,54,28,.08); }
+    *{box-sizing:border-box}
+    html{overflow-y:scroll}
+    body{font-family:Georgia,serif;background:linear-gradient(180deg,#efe6d8, #f8f5ef 30%, #f0ebe2);color:var(--ink);margin:0;line-height:1.5}
+    header{padding:24px 24px 18px;border-bottom:1px solid var(--line);background:rgba(255,253,248,.92);position:sticky;top:0;backdrop-filter: blur(10px);z-index:20;box-shadow:0 8px 24px rgba(78,54,28,.06)}
+    h1,h2,h3,p{margin:0}
+    h1{line-height:1.2}
+    h2{font-size:22px;line-height:1.25}
+    h3{font-size:16px;line-height:1.3}
+    .hero{display:flex;justify-content:space-between;gap:18px;align-items:end;flex-wrap:wrap;margin-bottom:16px}
     .muted{color:var(--muted)}
-    .pill{display:inline-block;padding:4px 10px;border-radius:999px;background:#fff1e8;color:var(--accent);font-size:12px}
-    pre{white-space:pre-wrap;font-size:12px;background:#221f1c;color:#f8f4ee;padding:12px;border-radius:12px;max-height:280px;overflow:auto}
-    input,button,select,textarea{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line)}
-    button{background:var(--accent);color:white;border:none;cursor:pointer}
-    form{display:grid;gap:10px}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-    .table-scroll{overflow-x:auto}
+    .pill{display:inline-block;padding:5px 11px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:12px;line-height:1.3}
+    .topnav{display:flex;flex-wrap:wrap;gap:10px;padding-top:4px}
+    .topnav a{padding:10px 14px;border-radius:999px;border:1px solid var(--line);background:#fff8ef;color:var(--ink);text-decoration:none;line-height:1.3;min-height:42px;display:inline-flex;align-items:center;justify-content:center}
+    .topnav a.is-active{background:var(--accent);border-color:var(--accent);color:#fff}
+    .shell{padding:24px;display:grid;gap:20px;max-width:1440px;margin:0 auto}
+    .status-strip{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));align-items:start}
+    .view-grid{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));align-items:start}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:var(--shadow);min-width:0;overflow:hidden}
+    .card--wide{grid-column:1/-1;min-width:0}
+    .card > * + *{margin-top:16px}
+    .card h2 + .muted,.card h2 + .section-lead{margin-top:6px}
+    .section-lead{color:var(--muted)}
+    .key-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+    .key-item{padding:14px;border-radius:14px;background:#fff8ef;border:1px solid #f0e1d0;min-width:0}
+    .key-item strong{display:block;margin-bottom:6px}
+    .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .field-grid--triple{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .field{display:grid;gap:8px;min-width:0}
+    .field span{font-size:13px;font-weight:600;color:var(--muted);line-height:1.35}
+    .field--full{grid-column:1/-1}
+    .form-section{display:grid;gap:14px;padding:16px;border:1px solid #efe2d3;border-radius:16px;background:#fffaf3}
+    .button-row{display:flex;flex-wrap:wrap;gap:12px}
+    .button-row button{flex:1 1 180px}
+    .split-panel{display:grid;gap:16px;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr)}
+    pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font-size:12px;background:#221f1c;color:#f8f4ee;padding:14px;border-radius:14px;max-height:360px;overflow:auto;max-width:100%}
+    code{overflow-wrap:anywhere}
+    input,button,select,textarea{font:inherit;padding:11px 13px;border-radius:12px;border:1px solid var(--line);width:100%;max-width:100%;min-height:44px;background:#fff}
+    textarea{min-height:108px;resize:vertical}
+    button{background:var(--accent);color:white;border:none;cursor:pointer;font-weight:600}
+    button:hover{filter:brightness(.98)}
+    form{display:grid;gap:14px;min-width:0}
+    details{display:grid;gap:12px;padding:14px 16px;border:1px solid #efe2d3;border-radius:14px;background:#fffaf3}
+    summary{cursor:pointer}
+    table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
+    td,th{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:anywhere}
+    th{background:#fbf4ea;font-weight:700;position:sticky;top:0}
+    .table-scroll{overflow:auto;max-width:100%;border:1px solid #f0e1d0;border-radius:14px;background:#fff}
+    .table-scroll table{min-width:720px}
     .channel-actions{display:flex;flex-wrap:wrap;gap:8px}
     .channel-table td:last-child,.channel-table th:last-child{min-width:220px}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    @media(max-width:720px){main,.grid2{grid-template-columns:1fr}}
+    .channel-actions button{width:auto;min-width:88px;flex:0 0 auto}
+    @media(max-width:1100px){.view-grid{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}.field-grid--triple{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:900px){header{padding:20px 18px 16px}.shell{padding:18px}.split-panel{grid-template-columns:1fr}.field-grid,.grid2,.field-grid--triple{grid-template-columns:1fr}}
+    @media(max-width:720px){.view-grid,.status-strip{grid-template-columns:1fr}.card{padding:16px}.topnav a{flex:1 1 140px}}
   </style>
 </head>
 <body>
@@ -57,10 +100,22 @@ HTML = """<!doctype html>
       </div>
       <div id="modeBox" class="pill">加载中</div>
     </div>
+    <nav id="primaryNav" class="topnav" aria-label="主导航">
+      <a href="/?view=overview" data-nav-view="overview">总览 / Dashboard</a>
+      <a href="/?view=actions" data-nav-view="actions">控制 / Actions</a>
+      <a href="/?view=settings" data-nav-view="settings">配置 / Settings</a>
+      <a href="/?view=channels" data-nav-view="channels">频道 / Channels</a>
+      <a href="/?view=runtime" data-nav-view="runtime">运行数据 / Runtime Data</a>
+    </nav>
   </header>
-  <main id="app"></main>
+  <main class="shell">
+    <section id="statusStrip" class="status-strip"></section>
+    <section id="viewMount" class="view-grid" data-current-view="__INITIAL_VIEW__"></section>
+  </main>
   <script>
     let latestLoadRequestId = 0;
+    const DEFAULT_VIEW = '__INITIAL_VIEW__';
+    const VALID_VIEWS = ['overview', 'actions', 'settings', 'channels', 'runtime'];
     async function api(path, options={}) {
       const res = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, options));
       if (res.status === 401) { location.href = '/login'; return; }
@@ -77,81 +132,378 @@ HTML = """<!doctype html>
       const key = String(value == null ? '' : value);
       return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : (key || fallback);
     }
-    function displayTradingMode(value) {
-      return pickLabel({observe:'观察模式', demo:'演示模式'}, value);
-    }
-    function displayExecutionMode(value) {
-      return pickLabel({automatic:'自动执行', observe:'仅观察'}, value);
-    }
-    function displayThinking(value) {
-      return pickLabel({off:'关闭', minimal:'极低', low:'低', medium:'中', high:'高', custom:'自定义'}, value);
-    }
-    function displayBool(value) {
-      return String(value) === 'true' ? '是' : '否';
-    }
-    function displaySourceType(value) {
-      return pickLabel({public_web:'public_web', bot_api:'bot_api（遗留）', mtproto:'mtproto（未实现）'}, value);
-    }
-    function displayPositionSide(value) {
-      return pickLabel({long:'多', short:'空'}, value);
-    }
-    function displayEventType(value) {
-      return pickLabel({new:'新增', edit:'编辑', delete:'删除'}, value);
-    }
+    function displayTradingMode(value) { return pickLabel({observe:'观察模式', demo:'演示模式'}, value); }
+    function displayExecutionMode(value) { return pickLabel({automatic:'自动执行', observe:'仅观察'}, value); }
+    function displayThinking(value) { return pickLabel({off:'关闭', minimal:'极低', low:'低', medium:'中', high:'高', custom:'自定义'}, value); }
+    function displayBool(value) { return String(value) === 'true' ? '是' : '否'; }
+    function displaySourceType(value) { return pickLabel({public_web:'public_web', bot_api:'bot_api（遗留）', mtproto:'mtproto（未实现）'}, value); }
+    function displayPositionSide(value) { return pickLabel({long:'多', short:'空'}, value); }
+    function displayEventType(value) { return pickLabel({new:'新增', edit:'编辑', delete:'删除'}, value); }
     function displayAction(value) {
       return pickLabel({
-        open_long:'开多',
-        open_short:'开空',
-        add_long:'加多',
-        add_short:'加空',
-        reduce_long:'减多',
-        reduce_short:'减空',
-        reverse_to_long:'反手开多',
-        reverse_to_short:'反手开空',
-        close_long:'平多',
-        close_short:'平空',
-        close_all:'全部平仓',
-        cancel_orders:'撤单',
-        cancel_entry:'撤销入场',
-        update_protection:'更新保护',
-        ignore:'忽略',
+        open_long:'开多', open_short:'开空', add_long:'加多', add_short:'加空', reduce_long:'减多', reduce_short:'减空',
+        reverse_to_long:'反手开多', reverse_to_short:'反手开空', close_long:'平多', close_short:'平空', close_all:'全部平仓',
+        cancel_orders:'撤单', cancel_entry:'撤销入场', update_protection:'更新保护', ignore:'忽略',
       }, value);
     }
     function displayRecordStatus(value) {
       return pickLabel({
-        filled:'已成交',
-        observed:'仅观察',
-        submitted:'已提交',
-        canceled:'已撤销',
-        rejected:'已拒绝',
-        failed:'失败',
-        pending:'处理中',
-        ignored:'已忽略',
-        open:'进行中',
-        closed:'已关闭',
-        EXECUTED:'已执行',
-        OBSERVED:'仅观察',
-        EXECUTION_FAILED:'执行失败',
-        RISK_REJECTED:'风控拒绝',
-        IGNORED:'已忽略',
-        ERROR:'错误',
+        filled:'已成交', observed:'仅观察', submitted:'已提交', canceled:'已撤销', rejected:'已拒绝', failed:'失败',
+        pending:'处理中', ignored:'已忽略', open:'进行中', closed:'已关闭', EXECUTED:'已执行', OBSERVED:'仅观察',
+        EXECUTION_FAILED:'执行失败', RISK_REJECTED:'风控拒绝', IGNORED:'已忽略', ERROR:'错误',
       }, value);
     }
+    function getCurrentView() {
+      const url = new URL(window.location.href);
+      const view = url.searchParams.get('view') || document.getElementById('viewMount').dataset.currentView || DEFAULT_VIEW;
+      return VALID_VIEWS.indexOf(view) >= 0 ? view : DEFAULT_VIEW;
+    }
+    function setCurrentView(view, replace) {
+      const nextView = VALID_VIEWS.indexOf(view) >= 0 ? view : DEFAULT_VIEW;
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', nextView);
+      if (replace) {
+        history.replaceState({view: nextView}, '', url.toString());
+      } else {
+        history.pushState({view: nextView}, '', url.toString());
+      }
+      document.getElementById('viewMount').dataset.currentView = nextView;
+      renderNav(nextView);
+      if (window.currentState) renderView(window.currentState, nextView);
+    }
+    function renderNav(activeView) {
+      document.querySelectorAll('[data-nav-view]').forEach(link => {
+        link.classList.toggle('is-active', link.dataset.navView === activeView);
+      });
+    }
+    function renderStatusStrip(data, ui, overview, directUseProfile) {
+      document.getElementById('statusStrip').innerHTML = `
+        <div class="card"><strong>当前运行画像</strong><div>${esc(directUseProfile.status_label || directUseProfile.status || '未提供')}</div><div class="muted">${esc(directUseProfile.detail || '')}</div></div>
+        <div class="card"><strong>运行态</strong><div>${esc(overview.runtime_status || (data.operator_state.paused ? '已暂停' : data.health.trading_runtime.status))}</div><div class="muted">${esc(overview.runtime_detail || data.operator_state.pause_reason || data.health.trading_runtime.detail || '')}</div></div>
+        <div class="card"><strong>最近对账</strong><div>${esc(overview.last_reconcile_detail || data.operator_state.last_reconcile.detail || '未执行')}</div><div class="muted">核验状态 ${esc(ui.verification_status || data.verification_status || 'unknown')}</div></div>
+        <div class="card"><strong>已启用频道</strong><div>${esc(data.wiring.enabled_channel_ids.join(', ') || '无')}</div><div class="muted">Web 监听 ${esc(data.wiring.web_bind)}</div></div>`;
+    }
+    function buildContext(data) {
+      const ui = data.web_display || {};
+      const overview = ui.overview || {};
+      const nextSteps = (ui.next_steps || data.next_steps || []).filter(Boolean);
+      const demoSignalText = __DEMO_SIGNAL_TEXT__;
+      const nextDemoSignalMessageId = data.messages.reduce((maxId, item) => {
+        const messageId = Number(item && item.message_id);
+        return Number.isFinite(messageId) ? Math.max(maxId, messageId) : maxId;
+      }, __DEMO_SIGNAL_MESSAGE_ID__ - 1) + 1;
+      const openPositions = data.positions.filter(item => {
+        const payload = item && item.payload ? item.payload : {};
+        return Number(payload.qty || 0) > 0 && ['long', 'short'].includes(String(payload.side || ''));
+      });
+      return {
+        data,
+        ui,
+        overview,
+        demoSignalText,
+        nextDemoSignalMessageId,
+        directUseProfile: ui.direct_use_profile || {status_label:'未提供', detail:'未提供', action:'未提供'},
+        logs: data.logs.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.level)}</td><td>${esc(item.category)}</td><td>${esc(item.message)}</td></tr>`).join(''),
+        auditLogs: data.audit_logs.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.category)}</td><td>${esc(item.message)}</td></tr>`).join(''),
+        orders: data.orders.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.symbol)}</td><td>${esc(displayAction(item.action))}</td><td>${esc(displayRecordStatus(item.status))}</td><td>${esc(displayTradingMode(item.mode))}</td></tr>`).join(''),
+        positions: openPositions.length ? openPositions.map(item => `<tr><td>${esc(item.symbol)}</td><td>${esc(displayPositionSide(item.payload.side))}</td><td>${esc(item.payload.qty)}</td><td>${esc(item.payload.leverage)}</td><td>${esc(item.payload.unrealized_pnl)}</td><td>${esc(JSON.stringify(item.payload.protection || {}))}</td><td><button type="button" data-close-symbol="${esc(item.symbol)}">平仓</button></td></tr>`).join('') : '<tr><td colspan="7">当前无持仓。</td></tr>',
+        channels: data.config.telegram.channels.map(ch => `<tr><td>${esc(ch.name)}</td><td>${esc(displaySourceType(ch.source_type))}</td><td>${esc(ch.chat_id || ch.channel_username)}</td><td>${esc(displayBool(ch.enabled))}</td><td>${esc(ch.reconcile_interval_seconds)}</td><td><div class="channel-actions"><button type="button" data-channel-action="edit" data-channel-id="${esc(ch.id)}">编辑</button><button type="button" data-channel-action="toggle" data-channel-id="${esc(ch.id)}">${ch.enabled ? '禁用' : '启用'}</button><button type="button" data-channel-action="remove" data-channel-id="${esc(ch.id)}">删除</button></div></td></tr>`).join(''),
+        messages: data.messages.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.chat_id)}</td><td>${esc(item.message_id)} v${esc(item.version)}</td><td>${esc(displayEventType(item.event_type))}</td><td>${esc(displayRecordStatus(item.status))}</td><td>${esc(item.payload.text || item.payload.caption || '')}</td></tr>`).join(''),
+        decisions: data.ai_decisions.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.payload.symbol)}</td><td>${esc(displayAction(item.payload.action))}</td><td>${esc(item.payload.confidence)}</td><td>${esc(item.payload.reason)}</td></tr>`).join(''),
+        health: esc(ui.health_json || JSON.stringify(data.health, null, 2)),
+        nextStep: nextSteps[0] || '',
+      };
+    }
+    function renderOverviewView(ctx) {
+      const data = ctx.data;
+      const nextStep = ctx.nextStep;
+      return `
+        <section class="card card--wide" data-view-section="overview-summary"><h2>总览 / Dashboard</h2>
+          <div class="key-grid">
+            <div class="key-item"><strong>交易模式</strong><div>${esc(displayTradingMode(data.config.trading.mode))}</div></div>
+            <div class="key-item"><strong>执行模式</strong><div>${esc(displayExecutionMode(data.config.trading.execution_mode))}</div></div>
+            <div class="key-item"><strong>盈亏</strong><div>${esc(data.dashboard.total_unrealized_pnl)} 未实现 / ${esc(data.dashboard.total_realized_pnl)} 已实现</div></div>
+            <div class="key-item"><strong>持仓</strong><div>${esc(data.dashboard.positions_count)} 已开 / ${esc(data.dashboard.tracked_symbols_count || data.positions.length)} 已跟踪</div></div>
+            <div class="key-item"><strong>话题目标</strong><div>${esc(data.wiring.topic_target || '未配置')}</div></div>
+            <div class="key-item"><strong>话题发送</strong><div>${esc(data.wiring.topic_delivery_state)}${data.wiring.topic_delivery_verified ? ' / 已验证' : ''}</div></div>
+          </div>
+        </section>
+        <section class="card"><h2>下一步</h2>
+          <div>${esc(nextStep || ctx.directUseProfile.action || '当前无需额外操作。')}</div>
+          <div class="muted">${esc(data.wiring.web_restart_required ? ('Web 地址配置已变更，重启后生效：' + data.run_paths.configured_web_login + '。') : '')}</div>
+        </section>
+      `;
+    }
+    function renderActionsView(ctx) {
+      const data = ctx.data;
+      return `
+        <section class="card card--wide" data-view-section="actions-quick"><h2>控制 / Actions</h2>
+          <div class="button-row">
+            <button type="button" id="pauseButton">暂停</button>
+            <button type="button" id="resumeButton">恢复</button>
+            <button type="button" id="reconcileButton">立即对账</button>
+            <button type="button" id="topicTestButton">话题自检</button>
+            <button type="button" id="resetLocalStateButton">重置本地状态</button>
+            <button type="button" id="closeAllButton">全部平仓</button>
+          </div>
+        </section>
+        <section class="card"><h2>操作员命令</h2>
+          <div class="section-lead">${esc((data.run_paths.operator_command_examples || []).join('  '))}</div>
+          <form id="operatorCommandForm">
+            <label class="field">
+              <span>命令内容</span>
+              <input name="text" value="/status" placeholder="/status">
+            </label>
+            <button>执行操作员命令</button>
+          </form>
+        </section>
+        <section class="card card--wide"><h2>演示信号测试</h2>
+          <div class="section-lead">默认走模拟；只有明确要打到已配置 OKX Demo 路径时才切换。</div>
+          <form id="injectForm">
+            <div class="form-section">
+              <label class="field field--full">
+                <span>信号文本</span>
+                <textarea name="text" rows="4" placeholder="${esc(ctx.demoSignalText)}">${esc(ctx.demoSignalText)}</textarea>
+              </label>
+              <div class="field-grid">
+                <label class="field">
+                  <span>会话 ID</span>
+                  <input name="chat_id" value="__DEMO_SIGNAL_CHAT_ID__" placeholder="会话 id">
+                </label>
+                <label class="field">
+                  <span>消息 ID</span>
+                  <input name="message_id" type="number" min="1" value="${esc(ctx.nextDemoSignalMessageId)}">
+                </label>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>事件类型</span>
+                  <select name="event_type"><option value="new">新增</option><option value="edit">编辑</option></select>
+                </label>
+                <label class="field">
+                  <span>版本号</span>
+                  <input name="version" type="number" min="1" placeholder="自动版本号">
+                </label>
+              </div>
+              <label class="field">
+                <span>执行路径</span>
+                <select name="execution_path"><option value="simulated">模拟冒烟</option><option value="configured">已配置 OKX 路径</option></select>
+              </label>
+            </div>
+            <button>执行演示信号</button>
+          </form>
+        </section>
+      `;
+    }
+    function renderSettingsView(ctx) {
+      const data = ctx.data;
+      return `
+        <section class="card"><h2>交易配置</h2>
+          <form id="modeForm">
+            <div class="form-section">
+              <div class="field-grid">
+                <label class="field">
+                  <span>交易模式</span>
+                  <select name="mode"><option value="observe" ${data.config.trading.mode==='observe'?'selected':''}>观察模式</option><option value="demo" ${data.config.trading.mode==='demo'?'selected':''}>演示模式</option></select>
+                </label>
+                <label class="field">
+                  <span>执行模式</span>
+                  <select name="execution_mode"><option value="automatic" ${data.config.trading.execution_mode==='automatic'?'selected':''}>自动执行</option><option value="observe" ${data.config.trading.execution_mode==='observe'?'selected':''}>仅观察</option></select>
+                </label>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>默认杠杆</span>
+                  <input name="default_leverage" type="number" min="1" max="125" value="${esc(data.config.trading.default_leverage)}">
+                </label>
+                <label class="field">
+                  <span>运行状态</span>
+                  <select name="paused"><option value="false" ${!data.config.trading.paused?'selected':''}>运行中</option><option value="true" ${data.config.trading.paused?'selected':''}>已暂停</option></select>
+                </label>
+              </div>
+            </div>
+            <button>保存交易配置</button>
+          </form>
+        </section>
+        <section class="card"><h2>AI 配置</h2>
+          <form id="aiForm">
+            <div class="form-section">
+              <div class="field-grid">
+                <label class="field">
+                  <span>Provider</span>
+                  <input name="provider" value="${esc(data.config.ai.provider)}" placeholder="openclaw">
+                </label>
+                <label class="field">
+                  <span>Model</span>
+                  <input name="model" value="${esc(data.config.ai.model)}" placeholder="default">
+                </label>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>Thinking 强度</span>
+                  <select name="thinking"><option value="off" ${data.config.ai.thinking==='off'?'selected':''}>关闭</option><option value="minimal" ${data.config.ai.thinking==='minimal'?'selected':''}>极低</option><option value="low" ${data.config.ai.thinking==='low'?'selected':''}>低</option><option value="medium" ${data.config.ai.thinking==='medium'?'selected':''}>中</option><option value="high" ${data.config.ai.thinking==='high'?'selected':''}>高</option><option value="custom" ${data.config.ai.thinking==='custom'?'selected':''}>自定义</option></select>
+                </label>
+                <label class="field">
+                  <span>超时秒数</span>
+                  <input name="timeout_seconds" type="number" min="1" value="${esc(data.config.ai.timeout_seconds)}">
+                </label>
+              </div>
+              <label class="field field--full">
+                <span>系统提示词</span>
+                <textarea name="system_prompt" rows="4" placeholder="仅输出严格 JSON">${esc(data.config.ai.system_prompt)}</textarea>
+              </label>
+            </div>
+            <button>保存 AI 配置</button>
+          </form>
+        </section>
+        <section class="card"><h2>风控配置</h2>
+          <form id="riskForm">
+            <div class="form-section">
+              <div class="field-grid">
+                <label class="field">
+                  <span>全局止盈止损</span>
+                  <select name="global_tp_sl_enabled"><option value="false" ${!data.config.trading.global_tp_sl_enabled?'selected':''}>关闭</option><option value="true" ${data.config.trading.global_tp_sl_enabled?'selected':''}>启用</option></select>
+                </label>
+                <label class="field">
+                  <span>全局止盈比例</span>
+                  <input name="global_take_profit_ratio" type="number" step="0.1" value="${esc(data.config.trading.global_take_profit_ratio)}">
+                </label>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>全局止损比例</span>
+                  <input name="global_stop_loss_ratio" type="number" step="0.1" value="${esc(data.config.trading.global_stop_loss_ratio)}">
+                </label>
+                <label class="field">
+                  <span>只读平仓限制</span>
+                  <select name="readonly_close_only"><option value="false" ${!data.config.trading.readonly_close_only?'selected':''}>正常</option><option value="true" ${data.config.trading.readonly_close_only?'selected':''}>仅平仓</option></select>
+                </label>
+              </div>
+            </div>
+            <button>保存风控配置</button>
+          </form>
+        </section>
+        <section class="card card--wide"><h2>Telegram 接线</h2>
+          <form id="telegramForm">
+            <div class="section-lead"><code>public_web</code> 是主支持采集路径；这里主要维护话题目标和轮询参数。</div>
+            <div class="form-section">
+              <div class="field-grid">
+                <label class="field">
+                  <span>汇报话题</span>
+                  <input name="report_topic" value="${esc(data.config.telegram.report_topic)}" placeholder="汇报话题或 https://t.me/c/.../...">
+                </label>
+                <label class="field">
+                  <span>操作员目标</span>
+                  <input name="operator_target" value="${esc(data.config.telegram.operator_target)}" placeholder="操作员目标或 https://t.me/c/.../...">
+                </label>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>线程 ID</span>
+                  <input name="operator_thread_id" type="number" min="0" value="${esc(data.config.telegram.operator_thread_id)}" placeholder="线程 id">
+                </label>
+                <label class="field">
+                  <span>轮询秒数</span>
+                  <input name="poll_interval_seconds" type="number" min="1" value="${esc(data.config.telegram.poll_interval_seconds)}">
+                </label>
+              </div>
+            </div>
+            <details>
+              <summary class="muted">遗留 bot_api / bot token 兼容项</summary>
+              <div class="muted">Bot token 已配置: ${esc(data.secret_status.telegram_bot_token_configured)}。来源: ${esc(data.secret_sources.telegram_bot_token)}。留空则保留现有 token。</div>
+              <input name="bot_token" value="" placeholder="遗留 bot token">
+              <label class="muted"><input name="clear_bot_token" type="checkbox" value="true"> 保存时清空已存储的 bot token</label>
+            </details>
+            <button>保存 Telegram 配置</button>
+          </form>
+        </section>
+      `;
+    }
+    function renderChannelsView(ctx) {
+      return `
+        <section class="card card--wide" data-view-section="channels-table"><h2>频道 / Channels</h2>
+          <div class="table-scroll"><table class="channel-table"><tr><th>名称</th><th>适配器</th><th>目标</th><th>已启用</th><th>对账</th><th>操作</th></tr>${ctx.channels}</table></div>
+        </section>
+        <section class="card card--wide"><h2>频道配置</h2>
+          <form id="channelForm">
+            <div class="form-section">
+              <div class="field-grid">
+                <label class="field">
+                  <span>频道 ID</span>
+                  <input name="id" placeholder="频道 id（留空自动生成）">
+                </label>
+                <label class="field">
+                  <span>展示名称</span>
+                  <input name="name" placeholder="展示名称">
+                </label>
+              </div>
+              <div class="muted">自动采集优先用 <code>public_web</code>；legacy 适配器才需要 <code>chat_id</code>。</div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>采集适配器</span>
+                  <select name="source_type"><option value="public_web">public_web</option><option value="bot_api">bot_api (legacy)</option><option value="mtproto">mtproto</option></select>
+                </label>
+                <label class="field">
+                  <span>chat_id / 链接</span>
+                  <input name="chat_id" placeholder="-100... or https://t.me/c/.../...">
+                </label>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>频道用户名 / 公共页链接</span>
+                  <input name="channel_username" placeholder="@username, https://t.me/username, or https://t.me/s/username">
+                </label>
+                <label class="field">
+                  <span>启用状态</span>
+                  <select name="enabled"><option value="true">启用</option><option value="false">禁用</option></select>
+                </label>
+              </div>
+              <div class="field-grid">
+                <label class="field">
+                  <span>对账间隔秒数</span>
+                  <input name="reconcile_interval_seconds" type="number" min="1" value="30">
+                </label>
+                <label class="field">
+                  <span>去重窗口秒数</span>
+                  <input name="dedup_window_seconds" type="number" min="1" value="3600">
+                </label>
+              </div>
+              <label class="field field--full">
+                <span>备注</span>
+                <textarea name="notes" rows="2" placeholder="备注"></textarea>
+              </label>
+            </div>
+            <button id="channelSubmitButton" type="submit">保存频道</button>
+          </form>
+        </section>
+      `;
+    }
+    function renderRuntimeView(ctx) {
+      return `
+        <section class="card"><h2>持仓</h2><div class="table-scroll"><table><tr><th>标的</th><th>方向</th><th>数量</th><th>杠杆</th><th>未实现盈亏</th><th>保护</th><th>操作</th></tr>${ctx.positions}</table></div></section>
+        <section class="card"><h2>订单</h2><div class="table-scroll"><table><tr><th>时间</th><th>标的</th><th>动作</th><th>状态</th><th>模式</th></tr>${ctx.orders}</table></div></section>
+        <section class="card"><h2>最近消息</h2><div class="table-scroll"><table><tr><th>时间</th><th>会话</th><th>消息</th><th>事件</th><th>状态</th><th>文本</th></tr>${ctx.messages}</table></div></section>
+        <section class="card"><h2>AI 决策</h2><div class="table-scroll"><table><tr><th>时间</th><th>标的</th><th>动作</th><th>置信度</th><th>原因</th></tr>${ctx.decisions}</table></div></section>
+        <section class="card"><h2>日志</h2><div class="table-scroll"><table><tr><th>时间</th><th>级别</th><th>分类</th><th>消息</th></tr>${ctx.logs}</table></div></section>
+        <section class="card"><h2>审计日志</h2><div class="table-scroll"><table><tr><th>时间</th><th>分类</th><th>消息</th></tr>${ctx.auditLogs}</table></div></section>
+        <section class="card"><h2>健康状态</h2><pre>${ctx.health}</pre></section>
+      `;
+    }
+    const VIEW_RENDERERS = {
+      overview: renderOverviewView,
+      actions: renderActionsView,
+      settings: renderSettingsView,
+      channels: renderChannelsView,
+      runtime: renderRuntimeView,
+    };
     function captureChannelFormState() {
       const form = document.getElementById('channelForm');
       if (!form) return null;
       return {
-        mode: form.dataset.mode || 'create',
-        dirty: form.dataset.dirty === 'true',
-        id: form.elements.id.value,
-        name: form.elements.name.value,
-        source_type: form.elements.source_type.value,
-        chat_id: form.elements.chat_id.value,
-        channel_username: form.elements.channel_username.value,
-        enabled: form.elements.enabled.value,
-        reconcile_interval_seconds: form.elements.reconcile_interval_seconds.value,
-        dedup_window_seconds: form.elements.dedup_window_seconds.value,
-        notes: form.elements.notes.value
+        mode: form.dataset.mode || 'create', dirty: form.dataset.dirty === 'true', id: form.elements.id.value, name: form.elements.name.value,
+        source_type: form.elements.source_type.value, chat_id: form.elements.chat_id.value, channel_username: form.elements.channel_username.value,
+        enabled: form.elements.enabled.value, reconcile_interval_seconds: form.elements.reconcile_interval_seconds.value,
+        dedup_window_seconds: form.elements.dedup_window_seconds.value, notes: form.elements.notes.value
       };
     }
     function restoreChannelFormState(state) {
@@ -175,256 +527,27 @@ HTML = """<!doctype html>
     function shouldDeferBackgroundLoad() {
       const form = document.getElementById('channelForm');
       if (!form) return false;
+      if (getCurrentView() !== 'channels') return false;
       if (form.dataset.mode === 'edit' || form.dataset.dirty === 'true') return true;
       const active = document.activeElement;
       return !!(active && form.contains(active));
     }
-    function render(data) {
+    function renderView(data, view) {
       const channelFormState = captureChannelFormState();
-      window.currentState = data;
-      const ui = data.web_display || {};
-      const overview = ui.overview || {};
-      const demoSignalText = __DEMO_SIGNAL_TEXT__;
-      const nextDemoSignalMessageId = data.messages.reduce((maxId, item) => {
-        const messageId = Number(item && item.message_id);
-        return Number.isFinite(messageId) ? Math.max(maxId, messageId) : maxId;
-      }, __DEMO_SIGNAL_MESSAGE_ID__ - 1) + 1;
-      document.getElementById('modeBox').textContent = displayTradingMode(data.config.trading.mode) + ' / ' + displayExecutionMode(data.config.trading.execution_mode);
-      document.getElementById('webBindBox').textContent = data.wiring.web_server_active ? ('当前监听 ' + data.wiring.web_bind) : ('配置监听 ' + data.wiring.web_bind);
-      const openPositions = data.positions.filter(item => {
-        const payload = item && item.payload ? item.payload : {};
-        return Number(payload.qty || 0) > 0 && ['long', 'short'].includes(String(payload.side || ''));
-      });
-      const readiness = (ui.readiness_checks || data.readiness_checks || []).map(item => `<tr><td>${esc(item.label || item.name)}</td><td>${esc(item.status_label || item.status)}</td><td>${esc(item.detail)}</td></tr>`).join('');
-      const logs = data.logs.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.level)}</td><td>${esc(item.category)}</td><td>${esc(item.message)}</td></tr>`).join('');
-      const auditLogs = data.audit_logs.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.category)}</td><td>${esc(item.message)}</td></tr>`).join('');
-      const orders = data.orders.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.symbol)}</td><td>${esc(displayAction(item.action))}</td><td>${esc(displayRecordStatus(item.status))}</td><td>${esc(displayTradingMode(item.mode))}</td></tr>`).join('');
-      const positions = openPositions.length
-        ? openPositions.map(item => `<tr><td>${esc(item.symbol)}</td><td>${esc(displayPositionSide(item.payload.side))}</td><td>${esc(item.payload.qty)}</td><td>${esc(item.payload.leverage)}</td><td>${esc(item.payload.unrealized_pnl)}</td><td>${esc(JSON.stringify(item.payload.protection || {}))}</td><td><button type="button" data-close-symbol="${esc(item.symbol)}">平仓</button></td></tr>`).join('')
-        : '<tr><td colspan="7">当前无持仓。</td></tr>';
-      const channels = data.config.telegram.channels.map(ch => `<tr><td>${esc(ch.name)}</td><td>${esc(displaySourceType(ch.source_type))}</td><td>${esc(ch.chat_id || ch.channel_username)}</td><td>${esc(displayBool(ch.enabled))}</td><td>${esc(ch.reconcile_interval_seconds)}</td><td><div class="channel-actions"><button type="button" data-channel-action="edit" data-channel-id="${esc(ch.id)}">编辑</button><button type="button" data-channel-action="toggle" data-channel-id="${esc(ch.id)}">${ch.enabled ? '禁用' : '启用'}</button><button type="button" data-channel-action="remove" data-channel-id="${esc(ch.id)}">删除</button></div></td></tr>`).join('');
-      const messages = data.messages.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.chat_id)}</td><td>${esc(item.message_id)} v${esc(item.version)}</td><td>${esc(displayEventType(item.event_type))}</td><td>${esc(displayRecordStatus(item.status))}</td><td>${esc(item.payload.text || item.payload.caption || '')}</td></tr>`).join('');
-      const decisions = data.ai_decisions.map(item => `<tr><td>${esc(item.created_at)}</td><td>${esc(item.payload.symbol)}</td><td>${esc(displayAction(item.payload.action))}</td><td>${esc(item.payload.confidence)}</td><td>${esc(item.payload.reason)}</td></tr>`).join('');
-      const health = esc(ui.health_json || JSON.stringify(data.health, null, 2));
-      const runPaths = esc(ui.run_paths_json || JSON.stringify(data.run_paths, null, 2));
-      const setupExamples = esc(ui.setup_examples_json || JSON.stringify(data.run_paths.setup_examples || {}, null, 2));
-      const capabilities = (ui.capabilities || []).map(item => `<tr><td>${esc(item.label || item.name)}</td><td>${esc(item.status_label || item.status)}</td><td>${esc(item.detail)}</td><td>${esc(item.action)}</td></tr>`).join('');
-      const activationSummary = (ui.activation_summary || []).map(item => `<tr><td>${esc(item.label || item.name)}</td><td>${esc(item.status_label || item.status)}</td><td>${esc(item.detail)}</td><td>${esc(item.action)}</td></tr>`).join('');
-      const remainingGaps = (ui.remaining_gaps || []).map(item => `<tr><td>${esc(item.label || item.id)}</td><td>${esc(item.scope_label || item.scope)}</td><td>${esc(item.status_label || item.status)}</td><td>${esc(item.detail)}</td><td>${esc(item.action)}</td></tr>`).join('');
-      const activationChecklist = (ui.activation_checklist || data.run_paths.activation_checklist || []).map(item => `<tr><td>${esc(item)}</td></tr>`).join('');
-      const nextSteps = (ui.next_steps || data.next_steps || []).map(item => `<tr><td>${esc(item)}</td></tr>`).join('');
-      const directUseProfile = ui.direct_use_profile || {status_label:'未提供', detail:'未提供', action:'未提供'};
-      document.getElementById('app').innerHTML = `
-        <section class="card"><h2>控制总览</h2>
-          <div class="grid2">
-            <div><strong>当前运行画像</strong><div>${esc(directUseProfile.status_label || directUseProfile.status || '未提供')}</div></div>
-            <div><strong>当前下一步</strong><div>${esc(directUseProfile.action)}</div></div>
-            <div><strong>核验状态</strong><div>${esc(ui.verification_status || data.verification_status || 'unknown')}</div></div>
-            <div><strong>剩余缺口</strong><div>${esc((data.remaining_gaps || []).length)}</div></div>
-            <div><strong>AI 提供方</strong><div>${esc(data.config.ai.provider)}</div></div>
-            <div><strong>AI 模型</strong><div>${esc(data.config.ai.model)} / ${esc(displayThinking(data.config.ai.thinking))}</div></div>
-            <div><strong>默认杠杆</strong><div>${esc(data.config.trading.default_leverage)}x</div></div>
-            <div><strong>全局止盈止损</strong><div>${esc(displayBool(data.config.trading.global_tp_sl_enabled))}</div></div>
-            <div><strong>盈亏</strong><div>${esc(data.dashboard.total_unrealized_pnl)} 未实现 / ${esc(data.dashboard.total_realized_pnl)} 已实现</div></div>
-            <div><strong>持仓</strong><div>${esc(data.dashboard.positions_count)} 已开 / ${esc(data.dashboard.tracked_symbols_count || data.positions.length)} 已跟踪</div></div>
-            <div><strong>运行态</strong><div>${esc(overview.runtime_status || (data.operator_state.paused ? '已暂停' : data.health.trading_runtime.status))}</div></div>
-            <div><strong>最近对账</strong><div>${esc(overview.last_reconcile_detail || data.operator_state.last_reconcile.detail)}</div></div>
-            <div><strong>OKX 执行路径</strong><div>${esc(overview.okx_execution_path || data.wiring.okx_execution_path)}</div></div>
-            <div><strong>已配置 OKX 动作</strong><div>${esc(overview.configured_okx_supported_actions || (data.wiring.configured_okx_supported_actions || []).join(', ') || '未提供')}</div></div>
-            <div><strong>手动注入</strong><div>${esc(overview.manual_signal_paths || (data.wiring.manual_signal_default_path + ' 默认 / ' + data.wiring.manual_signal_configured_path + ' 已配置'))}</div></div>
-            <div><strong>话题目标</strong><div>${esc(data.wiring.topic_target || '未配置')}</div></div>
-            <div><strong>话题链接</strong><div>${esc(data.run_paths.topic_target_link || '未提供')}</div></div>
-            <div><strong>话题来源</strong><div>${esc(overview.topic_target_source || data.wiring.topic_target_source || '未提供')}</div></div>
-            <div><strong>话题发送</strong><div>${esc(overview.topic_delivery_state || data.wiring.topic_delivery_state)}${data.wiring.topic_delivery_verified ? ' / 已验证' : ''}</div></div>
-            <div><strong>话题详情</strong><div>${esc(overview.topic_delivery_detail || data.wiring.topic_delivery_detail)}</div></div>
-            <div><strong>话题入站</strong><div>${esc(overview.operator_command_ingress || data.wiring.operator_command_ingress)}</div></div>
-            <div><strong>Telegram 轮询</strong><div>${esc(overview.telegram_watch_mode || data.wiring.telegram_watch_mode)}</div></div>
-            <div><strong>Web 监听</strong><div>${esc(data.wiring.web_bind)}</div></div>
-            <div><strong>已启用频道</strong><div>${esc(data.wiring.enabled_channel_ids.join(', ') || '无')}</div></div>
-          </div>
-          <div class="muted">${esc(directUseProfile.detail)}</div>
-          <div class="muted">${esc(overview.runtime_detail || (data.wiring.web_restart_required ? ('配置中的 Web host/port 已变更，需重启后才会生效：' + data.run_paths.configured_web_login + '。') : (data.operator_state.pause_reason || data.health.trading_runtime.detail)))}</div>
-        </section>
-        <section class="card"><h2>激活摘要</h2><table><tr><th>路径</th><th>状态</th><th>说明</th><th>操作</th></tr>${activationSummary}</table></section>
-        <section class="card"><h2>能力摘要</h2><table><tr><th>能力</th><th>状态</th><th>说明</th><th>操作</th></tr>${capabilities}</table></section>
-        <section class="card"><h2>剩余缺口</h2><table><tr><th>缺口</th><th>范围</th><th>状态</th><th>说明</th><th>操作</th></tr>${remainingGaps || '<tr><td colspan="5">当前未报告明确缺口。</td></tr>'}</table></section>
-        <section class="card"><h2>就绪检查</h2><table><tr><th>检查项</th><th>状态</th><th>说明</th></tr>${readiness}</table></section>
-        <section class="card"><h2>下一步</h2><table><tr><th>操作</th></tr>${nextSteps || '<tr><td>当前未生成下一步。</td></tr>'}</table></section>
-        <section class="card"><h2>激活步骤</h2>
-          <table><tr><th>检查清单</th></tr>${activationChecklist || '<tr><td>当前无激活检查清单。</td></tr>'}</table>
-          <div class="muted">下一步本地接线所需的脱敏配置片段。</div>
-          <pre>${setupExamples}</pre>
-        </section>
-        <section class="card"><h2>运行路径</h2>
-          <div class="muted">配置: ${esc(data.runtime.config_path)}</div>
-          <pre>${runPaths}</pre>
-        </section>
-        <section class="card"><h2>直接使用摘要</h2>
-          <div class="muted">这里显示 Web 端中文化后的直用摘要；底层运行时产物仍保留原始摘要结构。</div>
-          <pre>${esc(ui.direct_use_text || data.direct_use_text || '')}</pre>
-        </section>
-        <section class="card"><h2>交易模式</h2>
-          <form id="modeForm">
-            <div class="grid2">
-              <select name="mode">
-                <option value="observe" ${data.config.trading.mode==='observe'?'selected':''}>观察模式</option>
-                <option value="demo" ${data.config.trading.mode==='demo'?'selected':''}>演示模式</option>
-              </select>
-              <select name="execution_mode">
-                <option value="automatic" ${data.config.trading.execution_mode==='automatic'?'selected':''}>自动执行</option>
-                <option value="observe" ${data.config.trading.execution_mode==='observe'?'selected':''}>仅观察</option>
-              </select>
-            </div>
-            <div class="grid2">
-              <input name="default_leverage" type="number" min="1" max="125" value="${esc(data.config.trading.default_leverage)}">
-              <select name="paused">
-                <option value="false" ${!data.config.trading.paused?'selected':''}>运行中</option>
-                <option value="true" ${data.config.trading.paused?'selected':''}>已暂停</option>
-              </select>
-            </div>
-            <button>保存交易配置</button>
-          </form>
-          <div class="grid2">
-            <button type="button" id="pauseButton">暂停</button>
-            <button type="button" id="resumeButton">恢复</button>
-            <button type="button" id="reconcileButton">立即对账</button>
-            <button type="button" id="topicTestButton">话题自检</button>
-            <button type="button" id="resetLocalStateButton">重置本地状态</button>
-          </div>
-        </section>
-        <section class="card"><h2>AI 配置</h2>
-          <form id="aiForm">
-            <div class="grid2">
-              <input name="provider" value="${esc(data.config.ai.provider)}" placeholder="openclaw">
-              <input name="model" value="${esc(data.config.ai.model)}" placeholder="default">
-            </div>
-            <div class="grid2">
-              <select name="thinking">
-                <option value="off" ${data.config.ai.thinking==='off'?'selected':''}>关闭</option>
-                <option value="minimal" ${data.config.ai.thinking==='minimal'?'selected':''}>极低</option>
-                <option value="low" ${data.config.ai.thinking==='low'?'selected':''}>低</option>
-                <option value="medium" ${data.config.ai.thinking==='medium'?'selected':''}>中</option>
-                <option value="high" ${data.config.ai.thinking==='high'?'selected':''}>高</option>
-                <option value="custom" ${data.config.ai.thinking==='custom'?'selected':''}>自定义</option>
-              </select>
-              <input name="timeout_seconds" type="number" min="1" value="${esc(data.config.ai.timeout_seconds)}">
-            </div>
-            <textarea name="system_prompt" rows="4" placeholder="仅输出严格 JSON">${esc(data.config.ai.system_prompt)}</textarea>
-            <button>保存 AI 配置</button>
-          </form>
-        </section>
-        <section class="card"><h2>风控配置</h2>
-          <form id="riskForm">
-            <div class="grid2">
-              <select name="global_tp_sl_enabled">
-                <option value="false" ${!data.config.trading.global_tp_sl_enabled?'selected':''}>关闭</option>
-                <option value="true" ${data.config.trading.global_tp_sl_enabled?'selected':''}>启用</option>
-              </select>
-              <input name="global_take_profit_ratio" type="number" step="0.1" value="${esc(data.config.trading.global_take_profit_ratio)}">
-            </div>
-            <div class="grid2">
-              <input name="global_stop_loss_ratio" type="number" step="0.1" value="${esc(data.config.trading.global_stop_loss_ratio)}">
-              <select name="readonly_close_only">
-                <option value="false" ${!data.config.trading.readonly_close_only?'selected':''}>正常</option>
-                <option value="true" ${data.config.trading.readonly_close_only?'selected':''}>仅平仓</option>
-              </select>
-            </div>
-            <button>保存风控配置</button>
-          </form>
-        </section>
-        <section class="card"><h2>Telegram 接线</h2>
-          <form id="telegramForm">
-            <div class="muted">主支持自动采集路径是 <code>public_web</code> 公共页面抓取。这里主要配置话题日志与轮询参数。</div>
-            <div class="muted">话题目标支持 <code>-100...:topic:...</code> 或 <code>https://t.me/c/.../...</code> 话题链接。</div>
-            <div class="grid2">
-              <input name="report_topic" value="${esc(data.config.telegram.report_topic)}" placeholder="汇报话题或 https://t.me/c/.../...">
-              <input name="operator_target" value="${esc(data.config.telegram.operator_target)}" placeholder="操作员目标或 https://t.me/c/.../...">
-            </div>
-            <div class="grid2">
-              <input name="operator_thread_id" type="number" min="0" value="${esc(data.config.telegram.operator_thread_id)}" placeholder="线程 id">
-              <input name="poll_interval_seconds" type="number" min="1" value="${esc(data.config.telegram.poll_interval_seconds)}">
-            </div>
-            <details>
-              <summary class="muted">遗留 bot_api / bot token 兼容项</summary>
-              <div class="muted">Bot token 已配置: ${esc(data.secret_status.telegram_bot_token_configured)}。来源: ${esc(data.secret_sources.telegram_bot_token)}。留空则保留现有 token。</div>
-              <input name="bot_token" value="" placeholder="遗留 bot token">
-              <label class="muted"><input name="clear_bot_token" type="checkbox" value="true"> 保存时清空已存储的 bot token</label>
-            </details>
-            <button>保存 Telegram 配置</button>
-          </form>
-        </section>
-        <section class="card"><h2>操作员命令</h2>
-          <div class="muted">小 Claw 操作面默认走本地 / Web dry-run。Telegram 话题内入站 bot 命令属于遗留兼容，不是主支持路径。</div>
-          <div class="muted">${esc((data.run_paths.operator_command_examples || []).join('  '))}</div>
-          <form id="operatorCommandForm">
-            <input name="text" value="/status" placeholder="/status">
-            <button>执行操作员命令</button>
-          </form>
-        </section>
-        <section class="card card--channels"><h2>频道配置</h2>
-          <div class="table-scroll"><table class="channel-table"><tr><th>名称</th><th>适配器</th><th>目标</th><th>已启用</th><th>对账</th><th>操作</th></tr>${channels}</table></div>
-          <form id="channelForm">
-            <input name="id" placeholder="频道 id（留空自动生成）">
-            <input name="name" placeholder="展示名称">
-            <div class="muted">自动采集主路径请使用 <code>public_web</code>。<code>channel_username</code> 支持 <code>@name</code>、<code>https://t.me/name</code> 或 <code>https://t.me/s/name</code>。<code>chat_id</code> 仅在 legacy/internal 适配器下需要。</div>
-            <div class="grid2">
-              <select name="source_type">
-                <option value="public_web">public_web</option>
-                <option value="bot_api">bot_api (legacy)</option>
-                <option value="mtproto">mtproto</option>
-              </select>
-              <input name="chat_id" placeholder="-100... or https://t.me/c/.../...">
-            </div>
-            <div class="grid2">
-              <input name="channel_username" placeholder="@username, https://t.me/username, or https://t.me/s/username">
-              <select name="enabled">
-                <option value="true">启用</option>
-                <option value="false">禁用</option>
-              </select>
-            </div>
-            <div class="grid2">
-              <input name="reconcile_interval_seconds" type="number" min="1" value="30">
-              <input name="dedup_window_seconds" type="number" min="1" value="3600">
-            </div>
-            <textarea name="notes" rows="2" placeholder="备注"></textarea>
-            <button id="channelSubmitButton" type="submit">保存频道</button>
-          </form>
-        </section>
-        <section class="card"><h2>演示信号测试</h2>
-          <div class="muted">手动信号注入默认走模拟引擎。只有在你明确要发起 OKX demo REST 下单时，才选择已配置路径。</div>
-          <div class="muted">内置示例会自动推进 message id，避免操作员冒烟检查重复回放同一组消息。</div>
-          <form id="injectForm">
-            <textarea name="text" rows="4" placeholder="${esc(demoSignalText)}">${esc(demoSignalText)}</textarea>
-            <div class="grid2">
-              <input name="chat_id" value="__DEMO_SIGNAL_CHAT_ID__" placeholder="会话 id">
-              <input name="message_id" type="number" min="1" value="${esc(nextDemoSignalMessageId)}">
-            </div>
-            <div class="grid2">
-              <select name="event_type">
-                <option value="new">新增</option>
-                <option value="edit">编辑</option>
-              </select>
-              <input name="version" type="number" min="1" placeholder="自动版本号">
-            </div>
-            <select name="execution_path">
-              <option value="simulated">模拟冒烟</option>
-              <option value="configured">已配置 OKX 路径</option>
-            </select>
-            <button>执行演示信号</button>
-          </form>
-        </section>
-        <section class="card"><h2>持仓</h2>
-          <button type="button" id="closeAllButton">全部平仓</button>
-          <table><tr><th>标的</th><th>方向</th><th>数量</th><th>杠杆</th><th>未实现盈亏</th><th>保护</th><th>操作</th></tr>${positions}</table>
-        </section>
-        <section class="card"><h2>订单</h2><table><tr><th>时间</th><th>标的</th><th>动作</th><th>状态</th><th>模式</th></tr>${orders}</table></section>
-        <section class="card"><h2>最近消息</h2><table><tr><th>时间</th><th>会话</th><th>消息</th><th>事件</th><th>状态</th><th>文本</th></tr>${messages}</table></section>
-        <section class="card"><h2>AI 决策</h2><table><tr><th>时间</th><th>标的</th><th>动作</th><th>置信度</th><th>原因</th></tr>${decisions}</table></section>
-        <section class="card"><h2>日志</h2><table><tr><th>时间</th><th>级别</th><th>分类</th><th>消息</th></tr>${logs}</table></section>
-        <section class="card"><h2>审计日志</h2><table><tr><th>时间</th><th>分类</th><th>消息</th></tr>${auditLogs}</table></section>
-        <section class="card"><h2>健康状态</h2><pre>${health}</pre></section>`;
+      const ctx = buildContext(data);
+      renderStatusStrip(data, ctx.ui, ctx.overview, ctx.directUseProfile);
+      document.getElementById('viewMount').innerHTML = VIEW_RENDERERS[view](ctx);
+      bindNav();
       bindForms();
       restoreChannelFormState(channelFormState);
+    }
+    function render(data) {
+      window.currentState = data;
+      document.getElementById('modeBox').textContent = displayTradingMode(data.config.trading.mode) + ' / ' + displayExecutionMode(data.config.trading.execution_mode);
+      document.getElementById('webBindBox').textContent = data.wiring.web_server_active ? ('当前监听 ' + data.wiring.web_bind) : ('配置监听 ' + data.wiring.web_bind);
+      const activeView = getCurrentView();
+      renderNav(activeView);
+      renderView(data, activeView);
     }
     async function load(options){
       const background = !!(options && options.background);
@@ -452,82 +575,72 @@ HTML = """<!doctype html>
       const submit = document.getElementById('channelSubmitButton');
       if (submit) submit.textContent = '保存频道';
     }
+    function bindNav() {
+      document.querySelectorAll('[data-nav-view]').forEach(link => {
+        if (link.dataset.bound === 'true') return;
+        link.dataset.bound = 'true';
+        link.addEventListener('click', event => {
+          event.preventDefault();
+          setCurrentView(link.dataset.navView, false);
+        });
+      });
+    }
     function bindForms(){
       const modeForm = document.getElementById('modeForm');
-      if (modeForm) modeForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const f = new FormData(e.target);
-        try {
-          await api('/api/config', {method:'POST', body: JSON.stringify({trading:{
-            mode:f.get('mode'),
-            execution_mode:f.get('execution_mode'),
-            default_leverage:Number(f.get('default_leverage')),
-            paused:f.get('paused') === 'true'
-          }})});
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
+      if (modeForm && modeForm.dataset.bound !== 'true') {
+        modeForm.dataset.bound = 'true';
+        modeForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const f = new FormData(e.target);
+          try {
+            await api('/api/config', {method:'POST', body: JSON.stringify({trading:{ mode:f.get('mode'), execution_mode:f.get('execution_mode'), default_leverage:Number(f.get('default_leverage')), paused:f.get('paused') === 'true' }})});
+            await load();
+          } catch (err) { alert(err.message); }
+        });
+      }
       const riskForm = document.getElementById('riskForm');
-      if (riskForm) riskForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const f = new FormData(e.target);
-        try {
-          await api('/api/config', {method:'POST', body: JSON.stringify({trading:{
-            global_tp_sl_enabled:f.get('global_tp_sl_enabled') === 'true',
-            global_take_profit_ratio:Number(f.get('global_take_profit_ratio')),
-            global_stop_loss_ratio:Number(f.get('global_stop_loss_ratio')),
-            readonly_close_only:f.get('readonly_close_only') === 'true'
-          }})});
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
+      if (riskForm && riskForm.dataset.bound !== 'true') {
+        riskForm.dataset.bound = 'true';
+        riskForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const f = new FormData(e.target);
+          try {
+            await api('/api/config', {method:'POST', body: JSON.stringify({trading:{ global_tp_sl_enabled:f.get('global_tp_sl_enabled') === 'true', global_take_profit_ratio:Number(f.get('global_take_profit_ratio')), global_stop_loss_ratio:Number(f.get('global_stop_loss_ratio')), readonly_close_only:f.get('readonly_close_only') === 'true' }})});
+            await load();
+          } catch (err) { alert(err.message); }
+        });
+      }
       const aiForm = document.getElementById('aiForm');
-      if (aiForm) aiForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const f = new FormData(e.target);
-        try {
-          await api('/api/config', {method:'POST', body: JSON.stringify({ai:{
-            provider:String(f.get('provider')).trim(),
-            model:String(f.get('model')).trim(),
-            thinking:String(f.get('thinking')),
-            timeout_seconds:Number(f.get('timeout_seconds')),
-            system_prompt:String(f.get('system_prompt'))
-          }})});
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
+      if (aiForm && aiForm.dataset.bound !== 'true') {
+        aiForm.dataset.bound = 'true';
+        aiForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const f = new FormData(e.target);
+          try {
+            await api('/api/config', {method:'POST', body: JSON.stringify({ai:{ provider:String(f.get('provider')).trim(), model:String(f.get('model')).trim(), thinking:String(f.get('thinking')), timeout_seconds:Number(f.get('timeout_seconds')), system_prompt:String(f.get('system_prompt')) }})});
+            await load();
+          } catch (err) { alert(err.message); }
+        });
+      }
       const telegramForm = document.getElementById('telegramForm');
-      if (telegramForm) telegramForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const f = new FormData(e.target);
-        const telegramPatch = {
-          report_topic:String(f.get('report_topic')),
-          operator_target:String(f.get('operator_target')),
-          operator_thread_id:Number(f.get('operator_thread_id') || 0),
-          poll_interval_seconds:Number(f.get('poll_interval_seconds'))
-        };
-        const botToken = String(f.get('bot_token') || '').trim();
-        const clearBotToken = String(f.get('clear_bot_token') || '') === 'true';
-        if (clearBotToken) {
-          telegramPatch.bot_token = '';
-        } else if (botToken) {
-          telegramPatch.bot_token = botToken;
-        }
-        try {
-          await api('/api/config', {method:'POST', body: JSON.stringify({telegram:telegramPatch})});
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
+      if (telegramForm && telegramForm.dataset.bound !== 'true') {
+        telegramForm.dataset.bound = 'true';
+        telegramForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const f = new FormData(e.target);
+          const telegramPatch = { report_topic:String(f.get('report_topic')), operator_target:String(f.get('operator_target')), operator_thread_id:Number(f.get('operator_thread_id') || 0), poll_interval_seconds:Number(f.get('poll_interval_seconds')) };
+          const botToken = String(f.get('bot_token') || '').trim();
+          const clearBotToken = String(f.get('clear_bot_token') || '') === 'true';
+          if (clearBotToken) { telegramPatch.bot_token = ''; } else if (botToken) { telegramPatch.bot_token = botToken; }
+          try {
+            await api('/api/config', {method:'POST', body: JSON.stringify({telegram:telegramPatch})});
+            await load();
+          } catch (err) { alert(err.message); }
+        });
+      }
       const channelForm = document.getElementById('channelForm');
-      if (channelForm) {
+      if (channelForm && channelForm.dataset.bound !== 'true') {
+        channelForm.dataset.bound = 'true';
         channelForm.dataset.mode = channelForm.dataset.mode || 'create';
         channelForm.dataset.dirty = channelForm.dataset.dirty || 'false';
         const markDirty = () => { channelForm.dataset.dirty = 'true'; };
@@ -537,26 +650,16 @@ HTML = """<!doctype html>
           e.preventDefault();
           const f = new FormData(e.target);
           try {
-            await api('/api/channels/upsert', {method:'POST', body: JSON.stringify({
-              id:String(f.get('id')),
-              name:String(f.get('name')),
-              source_type:String(f.get('source_type')),
-              chat_id:String(f.get('chat_id')),
-              channel_username:String(f.get('channel_username')),
-              enabled:String(f.get('enabled')) === 'true',
-              reconcile_interval_seconds:Number(f.get('reconcile_interval_seconds')),
-              dedup_window_seconds:Number(f.get('dedup_window_seconds')),
-              notes:String(f.get('notes'))
-            })});
+            await api('/api/channels/upsert', {method:'POST', body: JSON.stringify({ id:String(f.get('id')), name:String(f.get('name')), source_type:String(f.get('source_type')), chat_id:String(f.get('chat_id')), channel_username:String(f.get('channel_username')), enabled:String(f.get('enabled')) === 'true', reconcile_interval_seconds:Number(f.get('reconcile_interval_seconds')), dedup_window_seconds:Number(f.get('dedup_window_seconds')), notes:String(f.get('notes')) })});
             e.target.reset();
             setChannelForm(null);
             await load();
-          } catch (err) {
-            alert(err.message);
-          }
+          } catch (err) { alert(err.message); }
         });
       }
       document.querySelectorAll('[data-channel-action]').forEach(button => {
+        if (button.dataset.bound === 'true') return;
+        button.dataset.bound = 'true';
         button.addEventListener('click', async e => {
           const channelId = e.currentTarget.dataset.channelId;
           const action = e.currentTarget.dataset.channelAction;
@@ -564,6 +667,7 @@ HTML = """<!doctype html>
           const channel = state.config.telegram.channels.find(item => item.id === channelId);
           try {
             if (action === 'edit') {
+              if (getCurrentView() !== 'channels') setCurrentView('channels', false);
               setChannelForm(channel || null);
               return;
             }
@@ -573,121 +677,106 @@ HTML = """<!doctype html>
               await api('/api/channels/remove', {method:'POST', body: JSON.stringify({channel_id: channelId})});
             }
             await load();
-          } catch (err) {
-            alert(err.message);
-          }
+          } catch (err) { alert(err.message); }
         });
       });
       const injectForm = document.getElementById('injectForm');
-      if (injectForm) injectForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const f = new FormData(e.target);
-        try {
-          await api('/api/inject-message', {method:'POST', body: JSON.stringify({
-            text:String(f.get('text')),
-            chat_id:String(f.get('chat_id')),
-            message_id:Number(f.get('message_id')),
-            event_type:String(f.get('event_type')),
-            version:f.get('version') ? Number(f.get('version')) : null,
-            use_configured_okx_path:String(f.get('execution_path')) === 'configured'
-          })});
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      const operatorCommandForm = document.getElementById('operatorCommandForm');
-      if (operatorCommandForm) operatorCommandForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const f = new FormData(e.target);
-        try {
-          const result = await api('/api/actions/operator-command', {method:'POST', body: JSON.stringify({text:String(f.get('text'))})});
-          alert(result.reply || result.status || '成功');
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      const closeAllButton = document.getElementById('closeAllButton');
-      if (closeAllButton) closeAllButton.addEventListener('click', async () => {
-        try {
-          await api('/api/positions/close', {method:'POST', body: JSON.stringify({})});
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      const pauseButton = document.getElementById('pauseButton');
-      if (pauseButton) pauseButton.addEventListener('click', async () => {
-        try {
-          await api('/api/actions/pause', {method:'POST', body: JSON.stringify({reason:'Web UI 手动暂停'})});
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      const resumeButton = document.getElementById('resumeButton');
-      if (resumeButton) resumeButton.addEventListener('click', async () => {
-        try {
-          await api('/api/actions/resume', {method:'POST', body: JSON.stringify({reason:'Web UI 手动恢复'})});
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      const reconcileButton = document.getElementById('reconcileButton');
-      if (reconcileButton) reconcileButton.addEventListener('click', async () => {
-        try {
-          const result = await api('/api/actions/reconcile', {method:'POST', body: JSON.stringify({})});
-          alert(result.detail);
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      const topicTestButton = document.getElementById('topicTestButton');
-      if (topicTestButton) topicTestButton.addEventListener('click', async () => {
-        try {
-          const result = await api('/api/actions/topic-test', {method:'POST', body: JSON.stringify({})});
-          const detail = result.reason || result.stderr || result.target_link || result.target || '';
-          alert(result.sent ? ('话题发送自检成功: ' + detail) : ('话题发送自检' + (result.status || '失败') + ': ' + detail));
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      const resetLocalStateButton = document.getElementById('resetLocalStateButton');
-      if (resetLocalStateButton) resetLocalStateButton.addEventListener('click', async () => {
-        if (!confirm('确认重置本地运行态吗？这只会清理本地 DB/日志/session 状态，不会触碰任何外部 OKX demo 持仓。')) return;
-        try {
-          const result = await api('/api/actions/reset-local-state', {method:'POST', body: JSON.stringify({})});
-          alert(result.detail);
-          await load();
-        } catch (err) {
-          alert(err.message);
-        }
-      });
-      document.querySelectorAll('[data-close-symbol]').forEach(button => {
-        button.addEventListener('click', async e => {
+      if (injectForm && injectForm.dataset.bound !== 'true') {
+        injectForm.dataset.bound = 'true';
+        injectForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const f = new FormData(e.target);
           try {
-            await api('/api/positions/close', {method:'POST', body: JSON.stringify({symbol: e.currentTarget.dataset.closeSymbol})});
+            await api('/api/inject-message', {method:'POST', body: JSON.stringify({ text:String(f.get('text')), chat_id:String(f.get('chat_id')), message_id:Number(f.get('message_id')), event_type:String(f.get('event_type')), version:f.get('version') ? Number(f.get('version')) : null, use_configured_okx_path:String(f.get('execution_path')) === 'configured' })});
             await load();
-          } catch (err) {
-            alert(err.message);
-          }
+          } catch (err) { alert(err.message); }
+        });
+      }
+      const operatorCommandForm = document.getElementById('operatorCommandForm');
+      if (operatorCommandForm && operatorCommandForm.dataset.bound !== 'true') {
+        operatorCommandForm.dataset.bound = 'true';
+        operatorCommandForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const f = new FormData(e.target);
+          try {
+            const result = await api('/api/actions/operator-command', {method:'POST', body: JSON.stringify({text:String(f.get('text'))})});
+            alert(result.reply || result.status || '成功');
+            await load();
+          } catch (err) { alert(err.message); }
+        });
+      }
+      const closeAllButton = document.getElementById('closeAllButton');
+      if (closeAllButton && closeAllButton.dataset.bound !== 'true') {
+        closeAllButton.dataset.bound = 'true';
+        closeAllButton.addEventListener('click', async () => {
+          try { await api('/api/positions/close', {method:'POST', body: JSON.stringify({})}); await load(); } catch (err) { alert(err.message); }
+        });
+      }
+      const pauseButton = document.getElementById('pauseButton');
+      if (pauseButton && pauseButton.dataset.bound !== 'true') {
+        pauseButton.dataset.bound = 'true';
+        pauseButton.addEventListener('click', async () => {
+          try { await api('/api/actions/pause', {method:'POST', body: JSON.stringify({reason:'Web UI 手动暂停'})}); await load(); } catch (err) { alert(err.message); }
+        });
+      }
+      const resumeButton = document.getElementById('resumeButton');
+      if (resumeButton && resumeButton.dataset.bound !== 'true') {
+        resumeButton.dataset.bound = 'true';
+        resumeButton.addEventListener('click', async () => {
+          try { await api('/api/actions/resume', {method:'POST', body: JSON.stringify({reason:'Web UI 手动恢复'})}); await load(); } catch (err) { alert(err.message); }
+        });
+      }
+      const reconcileButton = document.getElementById('reconcileButton');
+      if (reconcileButton && reconcileButton.dataset.bound !== 'true') {
+        reconcileButton.dataset.bound = 'true';
+        reconcileButton.addEventListener('click', async () => {
+          try { const result = await api('/api/actions/reconcile', {method:'POST', body: JSON.stringify({})}); alert(result.detail); await load(); } catch (err) { alert(err.message); }
+        });
+      }
+      const topicTestButton = document.getElementById('topicTestButton');
+      if (topicTestButton && topicTestButton.dataset.bound !== 'true') {
+        topicTestButton.dataset.bound = 'true';
+        topicTestButton.addEventListener('click', async () => {
+          try {
+            const result = await api('/api/actions/topic-test', {method:'POST', body: JSON.stringify({})});
+            const detail = result.reason || result.stderr || result.target_link || result.target || '';
+            alert(result.sent ? ('话题发送自检成功: ' + detail) : ('话题发送自检' + (result.status || '失败') + ': ' + detail));
+            await load();
+          } catch (err) { alert(err.message); }
+        });
+      }
+      const resetLocalStateButton = document.getElementById('resetLocalStateButton');
+      if (resetLocalStateButton && resetLocalStateButton.dataset.bound !== 'true') {
+        resetLocalStateButton.dataset.bound = 'true';
+        resetLocalStateButton.addEventListener('click', async () => {
+          if (!confirm('确认重置本地运行态吗？这只会清理本地 DB/日志/session 状态，不会触碰任何外部 OKX demo 持仓。')) return;
+          try { const result = await api('/api/actions/reset-local-state', {method:'POST', body: JSON.stringify({})}); alert(result.detail); await load(); } catch (err) { alert(err.message); }
+        });
+      }
+      document.querySelectorAll('[data-close-symbol]').forEach(button => {
+        if (button.dataset.bound === 'true') return;
+        button.dataset.bound = 'true';
+        button.addEventListener('click', async e => {
+          try { await api('/api/positions/close', {method:'POST', body: JSON.stringify({symbol: e.currentTarget.dataset.closeSymbol})}); await load(); } catch (err) { alert(err.message); }
         });
       });
     }
+    window.addEventListener('popstate', () => {
+      renderNav(getCurrentView());
+      if (window.currentState) renderView(window.currentState, getCurrentView());
+    });
+    bindNav();
+    renderNav(getCurrentView());
     load();
     setInterval(() => { load({background:true}); }, 5000);
   </script>
 </body></html>"""
-
-HTML = (
-    HTML.replace("__DEMO_SIGNAL_TEXT__", json.dumps(DEFAULT_DEMO_SIGNAL_TEXT))
-    .replace("__DEMO_SIGNAL_CHAT_ID__", DEFAULT_DEMO_SIGNAL_CHAT_ID)
-    .replace("__DEMO_SIGNAL_MESSAGE_ID__", str(DEFAULT_DEMO_SIGNAL_MESSAGE_ID))
-)
+    return (
+        html.replace("__DEMO_SIGNAL_TEXT__", json.dumps(DEFAULT_DEMO_SIGNAL_TEXT))
+        .replace("__DEMO_SIGNAL_CHAT_ID__", DEFAULT_DEMO_SIGNAL_CHAT_ID)
+        .replace("__DEMO_SIGNAL_MESSAGE_ID__", str(DEFAULT_DEMO_SIGNAL_MESSAGE_ID))
+        .replace("__INITIAL_VIEW__", _normalize_web_view(initial_view))
+    )
 
 
 _STATUS_LABELS = {
@@ -1717,22 +1806,26 @@ class WebController:
         return HTTPStatus.METHOD_NOT_ALLOWED, {}, {"error": "不支持该请求方法"}
 
     def _route_get(self, path: str, headers: dict[str, str]) -> tuple[int, dict[str, str], str | dict]:
-        if path == "/login":
+        parsed = urlsplit(path)
+        clean_path = parsed.path or "/"
+        query = parse_qs(parsed.query)
+        if clean_path == "/login":
             if self._require_auth(headers):
                 return HTTPStatus.SEE_OTHER, {"Location": "/"}, ""
             return HTTPStatus.OK, {"Content-Type": "text/html; charset=utf-8"}, _render_login_html()
-        if path == "/healthz":
+        if clean_path == "/healthz":
             snapshot = self.runtime.health_snapshot()
             overall = "ok" if all(item["status"] not in {"error", "fail"} for item in snapshot.values()) else "error"
             return HTTPStatus.OK, {}, {"status": overall, "health": snapshot}
-        if path == "/readyz":
+        if clean_path == "/readyz":
             report = self.runtime.public_verification_report()
             return HTTPStatus.OK, {}, {"status": report["status"], "checks": report["checks"]}
-        if path == "/" or path == "/index.html":
+        if clean_path == "/" or clean_path == "/index.html":
             if not self._require_auth(headers):
                 return HTTPStatus.SEE_OTHER, {"Location": "/login"}, ""
-            return HTTPStatus.OK, {"Content-Type": "text/html; charset=utf-8"}, HTML
-        if path == "/api/state":
+            initial_view = _normalize_web_view(query.get("view", ["overview"])[0])
+            return HTTPStatus.OK, {"Content-Type": "text/html; charset=utf-8"}, _render_app_html(initial_view)
+        if clean_path == "/api/state":
             if not self._require_auth(headers):
                 return HTTPStatus.UNAUTHORIZED, {}, {"error": "未授权"}
             snapshot = self.runtime.public_snapshot()

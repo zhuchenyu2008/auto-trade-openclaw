@@ -3117,15 +3117,21 @@ class AppTests(unittest.TestCase):
 
         status, _, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
         self.assertEqual(status, 200)
-        self.assertIn("<h2>控制总览</h2>", body)
-        self.assertIn("<h2>激活摘要</h2>", body)
-        self.assertIn("<h2>能力摘要</h2>", body)
-        self.assertIn("<h2>下一步</h2>", body)
+        self.assertIn('id="primaryNav"', body)
+        self.assertIn("总览 / Dashboard", body)
+        self.assertIn("控制 / Actions", body)
+        self.assertIn("配置 / Settings", body)
+        self.assertIn("频道 / Channels", body)
+        self.assertIn("运行数据 / Runtime Data", body)
+        self.assertIn('id="viewMount"', body)
+        self.assertIn("function renderOverviewView(ctx)", body)
+        self.assertIn("function renderRuntimeView(ctx)", body)
         self.assertIn("displayTradingMode(data.config.trading.mode)", body)
-        self.assertIn("displayBool(data.config.trading.global_tp_sl_enabled)", body)
+        self.assertIn("displayExecutionMode(data.config.trading.execution_mode)", body)
         self.assertIn(">观察模式</option>", body)
         self.assertIn(">自动执行</option>", body)
         self.assertIn('<button id="channelSubmitButton" type="submit">保存频道</button>', body)
+        self.assertIn("function setCurrentView(view, replace)", body)
         self.assertNotIn("data.config.trading.mode + ' / ' + data.config.trading.execution_mode", body)
         self.assertNotIn("Current Profile", body)
         self.assertNotIn("Verification", body)
@@ -3133,6 +3139,13 @@ class AppTests(unittest.TestCase):
         self.assertNotIn("Activation Summary", body)
         self.assertNotIn("Capabilities", body)
         self.assertNotIn("Next Steps", body)
+        self.assertNotIn("<h2>激活摘要</h2>", body)
+        self.assertNotIn("<h2>能力摘要</h2>", body)
+        self.assertNotIn("<h2>剩余缺口</h2>", body)
+        self.assertNotIn("<h2>就绪检查</h2>", body)
+        self.assertNotIn("<h2>运行路径</h2>", body)
+        self.assertNotIn("<h2>激活步骤</h2>", body)
+        self.assertNotIn("<h2>直接使用摘要</h2>", body)
 
     def test_web_homepage_preserves_channel_form_state_during_refresh(self):
         runtime = Runtime(self.root / "config.json")
@@ -3154,6 +3167,7 @@ class AppTests(unittest.TestCase):
         self.assertIn("function restoreChannelFormState(state)", body)
         self.assertIn("restoreChannelFormState(channelFormState);", body)
         self.assertIn("channelForm.addEventListener('input', markDirty);", body)
+        self.assertIn("if (getCurrentView() !== 'channels') return false;", body)
 
     def test_web_homepage_defers_background_refresh_while_channel_form_is_active(self):
         runtime = Runtime(self.root / "config.json")
@@ -3173,6 +3187,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("function shouldDeferBackgroundLoad()", body)
         self.assertIn("if (background && shouldDeferBackgroundLoad()) return;", body)
+        self.assertIn("if (getCurrentView() !== 'channels') return false;", body)
         self.assertIn("form.dataset.mode === 'edit' || form.dataset.dirty === 'true'", body)
         self.assertIn("form.contains(active)", body)
         self.assertIn("setInterval(() => { load({background:true}); }, 5000);", body)
@@ -3196,7 +3211,7 @@ class AppTests(unittest.TestCase):
         self.assertIn('<button id="channelSubmitButton" type="submit">保存频道</button>', body)
         self.assertNotIn("Update Channel", body)
 
-    def test_web_homepage_channels_section_uses_click_safe_layout(self):
+    def test_web_homepage_uses_view_shell_instead_of_single_big_page(self):
         runtime = Runtime(self.root / "config.json")
         self.addCleanup(runtime.stop)
         runtime.start(background=False)
@@ -3212,12 +3227,49 @@ class AppTests(unittest.TestCase):
 
         status, _, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
         self.assertEqual(status, 200)
-        self.assertIn('.card--channels{grid-column:1/-1;min-width:0}', body)
-        self.assertIn('<section class="card card--channels"><h2>频道配置</h2>', body)
-        self.assertIn('<div class="table-scroll"><table class="channel-table">', body)
-        self.assertIn('class="channel-actions"', body)
-        self.assertIn('data-channel-action="toggle"', body)
-        self.assertNotIn("header,header *{pointer-events:none}", body)
+        self.assertIn('id="statusStrip"', body)
+        self.assertIn('id="viewMount"', body)
+        self.assertIn('.form-section{display:grid;', body)
+        self.assertIn('.field-grid{display:grid;', body)
+        self.assertIn('.table-scroll{overflow:auto;', body)
+        self.assertIn("const VIEW_RENDERERS =", body)
+        self.assertIn("renderView(data, activeView);", body)
+        self.assertIn("document.getElementById('viewMount').innerHTML = VIEW_RENDERERS[view](ctx);", body)
+        self.assertNotIn("document.getElementById('app').innerHTML =", body)
+        self.assertNotIn('<main id="app"></main>', body)
+
+    def test_web_runtime_and_channels_views_remain_accessible_via_query_view(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, runtime_body = controller.route("GET", "/?view=runtime", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn('data-current-view="runtime"', runtime_body)
+        self.assertIn("function renderRuntimeView(ctx)", runtime_body)
+        self.assertIn("<h2>持仓</h2>", runtime_body)
+        self.assertIn("<h2>健康状态</h2>", runtime_body)
+        self.assertNotIn("<h2>运行路径</h2>", runtime_body)
+        self.assertNotIn("<h2>激活步骤</h2>", runtime_body)
+        self.assertNotIn("<h2>直接使用摘要</h2>", runtime_body)
+
+        status, _, channels_body = controller.route("GET", "/?view=channels", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn('data-current-view="channels"', channels_body)
+        self.assertIn('<div class="table-scroll"><table class="channel-table">', channels_body)
+        self.assertIn('class="channel-actions"', channels_body)
+        self.assertIn('data-channel-action="toggle"', channels_body)
+        self.assertIn("自动采集优先用 <code>public_web</code>", channels_body)
+        self.assertNotIn("header,header *{pointer-events:none}", channels_body)
 
     def test_runtime_operator_command_status_and_close(self):
         self.runtime.process_message(self._message("LONG BTCUSDT SIZE 1"))
