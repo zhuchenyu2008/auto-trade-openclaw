@@ -32,7 +32,7 @@ def _render_app_html(initial_view: str = "overview") -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TG OKX Auto Trade</title>
   <style>
-    :root { --bg:#f6f2ea; --ink:#1b1d1f; --accent:#d45500; --accent-soft:#fff1e8; --card:#fffdf8; --line:#e7d8c6; --muted:#6f665e; --shadow:0 14px 34px rgba(78,54,28,.08); }
+    :root { --bg:#f6f2ea; --ink:#1b1d1f; --accent:#d45500; --accent-soft:#fff1e8; --card:#fffdf8; --line:#e7d8c6; --muted:#6f665e; --shadow:0 14px 34px rgba(78,54,28,.08); --ok:#22663b; --ok-soft:#edf8f0; --warn:#9a5b00; --warn-soft:#fff5e6; --error:#a12626; --error-soft:#fff0f0; }
     *{box-sizing:border-box}
     html{overflow-y:scroll}
     body{font-family:Georgia,serif;background:linear-gradient(180deg,#efe6d8, #f8f5ef 30%, #f0ebe2);color:var(--ink);margin:0;line-height:1.5}
@@ -47,6 +47,11 @@ def _render_app_html(initial_view: str = "overview") -> str:
     .topnav{display:flex;flex-wrap:wrap;gap:10px;padding-top:4px}
     .topnav a{padding:10px 14px;border-radius:999px;border:1px solid var(--line);background:#fff8ef;color:var(--ink);text-decoration:none;line-height:1.3;min-height:42px;display:inline-flex;align-items:center;justify-content:center}
     .topnav a.is-active{background:var(--accent);border-color:var(--accent);color:#fff}
+    .feedback-bar{display:none;padding:14px 18px;border-radius:16px;border:1px solid var(--line);background:#fff8ef;box-shadow:var(--shadow)}
+    .feedback-bar.is-visible{display:block}
+    .feedback-bar[data-level="success"]{background:var(--ok-soft);border-color:#cbe5d2;color:var(--ok)}
+    .feedback-bar[data-level="error"]{background:var(--error-soft);border-color:#efc6c6;color:var(--error)}
+    .feedback-bar[data-level="warning"]{background:var(--warn-soft);border-color:#ecd7b3;color:var(--warn)}
     .shell{padding:24px;display:grid;gap:20px;max-width:1440px;margin:0 auto}
     .status-strip{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));align-items:start}
     .view-grid{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));align-items:start}
@@ -109,11 +114,13 @@ def _render_app_html(initial_view: str = "overview") -> str:
     </nav>
   </header>
   <main class="shell">
+    <section id="feedbackBar" class="feedback-bar" aria-live="polite"></section>
     <section id="statusStrip" class="status-strip"></section>
     <section id="viewMount" class="view-grid" data-current-view="__INITIAL_VIEW__"></section>
   </main>
   <script>
     let latestLoadRequestId = 0;
+    let feedbackTimer = null;
     const DEFAULT_VIEW = '__INITIAL_VIEW__';
     const VALID_VIEWS = ['overview', 'actions', 'settings', 'channels', 'runtime'];
     async function api(path, options={}) {
@@ -128,6 +135,36 @@ def _render_app_html(initial_view: str = "overview") -> str:
       return res.text();
     }
     function esc(v){ return String(v == null ? '' : v).replace(/[&<>]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[s])); }
+    function setFeedback(message, level='info', persist=false) {
+      const bar = document.getElementById('feedbackBar');
+      if (!bar) return;
+      const text = String(message == null ? '' : message).trim();
+      bar.textContent = text;
+      bar.dataset.level = level || 'info';
+      bar.classList.toggle('is-visible', !!text);
+      if (feedbackTimer) {
+        clearTimeout(feedbackTimer);
+        feedbackTimer = null;
+      }
+      if (text && !persist && level !== 'error') {
+        feedbackTimer = setTimeout(() => {
+          if (bar.dataset.level === level && bar.textContent === text) {
+            clearFeedback();
+          }
+        }, 4200);
+      }
+    }
+    function clearFeedback() {
+      const bar = document.getElementById('feedbackBar');
+      if (!bar) return;
+      bar.textContent = '';
+      bar.dataset.level = 'info';
+      bar.classList.remove('is-visible');
+      if (feedbackTimer) {
+        clearTimeout(feedbackTimer);
+        feedbackTimer = null;
+      }
+    }
     function pickLabel(map, value, fallback='未提供') {
       const key = String(value == null ? '' : value);
       return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : (key || fallback);
@@ -594,8 +631,9 @@ def _render_app_html(initial_view: str = "overview") -> str:
           const f = new FormData(e.target);
           try {
             await api('/api/config', {method:'POST', body: JSON.stringify({trading:{ mode:f.get('mode'), execution_mode:f.get('execution_mode'), default_leverage:Number(f.get('default_leverage')), paused:f.get('paused') === 'true' }})});
+            setFeedback('交易配置已保存', 'success');
             await load();
-          } catch (err) { alert(err.message); }
+          } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const riskForm = document.getElementById('riskForm');
@@ -606,8 +644,9 @@ def _render_app_html(initial_view: str = "overview") -> str:
           const f = new FormData(e.target);
           try {
             await api('/api/config', {method:'POST', body: JSON.stringify({trading:{ global_tp_sl_enabled:f.get('global_tp_sl_enabled') === 'true', global_take_profit_ratio:Number(f.get('global_take_profit_ratio')), global_stop_loss_ratio:Number(f.get('global_stop_loss_ratio')), readonly_close_only:f.get('readonly_close_only') === 'true' }})});
+            setFeedback('风控配置已保存', 'success');
             await load();
-          } catch (err) { alert(err.message); }
+          } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const aiForm = document.getElementById('aiForm');
@@ -618,8 +657,9 @@ def _render_app_html(initial_view: str = "overview") -> str:
           const f = new FormData(e.target);
           try {
             await api('/api/config', {method:'POST', body: JSON.stringify({ai:{ provider:String(f.get('provider')).trim(), model:String(f.get('model')).trim(), thinking:String(f.get('thinking')), timeout_seconds:Number(f.get('timeout_seconds')), system_prompt:String(f.get('system_prompt')) }})});
+            setFeedback('AI 配置已保存', 'success');
             await load();
-          } catch (err) { alert(err.message); }
+          } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const telegramForm = document.getElementById('telegramForm');
@@ -634,8 +674,9 @@ def _render_app_html(initial_view: str = "overview") -> str:
           if (clearBotToken) { telegramPatch.bot_token = ''; } else if (botToken) { telegramPatch.bot_token = botToken; }
           try {
             await api('/api/config', {method:'POST', body: JSON.stringify({telegram:telegramPatch})});
+            setFeedback('Telegram 配置已保存', 'success');
             await load();
-          } catch (err) { alert(err.message); }
+          } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const channelForm = document.getElementById('channelForm');
@@ -653,8 +694,9 @@ def _render_app_html(initial_view: str = "overview") -> str:
             await api('/api/channels/upsert', {method:'POST', body: JSON.stringify({ id:String(f.get('id')), name:String(f.get('name')), source_type:String(f.get('source_type')), chat_id:String(f.get('chat_id')), channel_username:String(f.get('channel_username')), enabled:String(f.get('enabled')) === 'true', reconcile_interval_seconds:Number(f.get('reconcile_interval_seconds')), dedup_window_seconds:Number(f.get('dedup_window_seconds')), notes:String(f.get('notes')) })});
             e.target.reset();
             setChannelForm(null);
+            setFeedback('频道已保存', 'success');
             await load();
-          } catch (err) { alert(err.message); }
+          } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       document.querySelectorAll('[data-channel-action]').forEach(button => {
@@ -673,11 +715,13 @@ def _render_app_html(initial_view: str = "overview") -> str:
             }
             if (action === 'toggle') {
               await api('/api/channels/toggle', {method:'POST', body: JSON.stringify({channel_id: channelId, enabled: !(channel && channel.enabled)})});
+              setFeedback('频道状态已更新', 'success');
             } else if (action === 'remove') {
               await api('/api/channels/remove', {method:'POST', body: JSON.stringify({channel_id: channelId})});
+              setFeedback('频道已移除', 'warning');
             }
             await load();
-          } catch (err) { alert(err.message); }
+          } catch (err) { setFeedback(err.message, 'error', true); }
         });
       });
       const injectForm = document.getElementById('injectForm');
@@ -688,8 +732,9 @@ def _render_app_html(initial_view: str = "overview") -> str:
           const f = new FormData(e.target);
           try {
             await api('/api/inject-message', {method:'POST', body: JSON.stringify({ text:String(f.get('text')), chat_id:String(f.get('chat_id')), message_id:Number(f.get('message_id')), event_type:String(f.get('event_type')), version:f.get('version') ? Number(f.get('version')) : null, use_configured_okx_path:String(f.get('execution_path')) === 'configured' })});
+            setFeedback('演示信号已注入', 'success');
             await load();
-          } catch (err) { alert(err.message); }
+          } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const operatorCommandForm = document.getElementById('operatorCommandForm');
@@ -700,37 +745,37 @@ def _render_app_html(initial_view: str = "overview") -> str:
           const f = new FormData(e.target);
           try {
             const result = await api('/api/actions/operator-command', {method:'POST', body: JSON.stringify({text:String(f.get('text'))})});
-            alert(result.reply || result.status || '成功');
+            setFeedback(result.reply || result.status || '操作员命令执行成功', 'success', true);
             await load();
-          } catch (err) { alert(err.message); }
+          } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const closeAllButton = document.getElementById('closeAllButton');
       if (closeAllButton && closeAllButton.dataset.bound !== 'true') {
         closeAllButton.dataset.bound = 'true';
         closeAllButton.addEventListener('click', async () => {
-          try { await api('/api/positions/close', {method:'POST', body: JSON.stringify({})}); await load(); } catch (err) { alert(err.message); }
+          try { await api('/api/positions/close', {method:'POST', body: JSON.stringify({})}); setFeedback('平仓请求已提交', 'success'); await load(); } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const pauseButton = document.getElementById('pauseButton');
       if (pauseButton && pauseButton.dataset.bound !== 'true') {
         pauseButton.dataset.bound = 'true';
         pauseButton.addEventListener('click', async () => {
-          try { await api('/api/actions/pause', {method:'POST', body: JSON.stringify({reason:'Web UI 手动暂停'})}); await load(); } catch (err) { alert(err.message); }
+          try { await api('/api/actions/pause', {method:'POST', body: JSON.stringify({reason:'Web UI 手动暂停'})}); setFeedback('运行态已暂停', 'warning'); await load(); } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const resumeButton = document.getElementById('resumeButton');
       if (resumeButton && resumeButton.dataset.bound !== 'true') {
         resumeButton.dataset.bound = 'true';
         resumeButton.addEventListener('click', async () => {
-          try { await api('/api/actions/resume', {method:'POST', body: JSON.stringify({reason:'Web UI 手动恢复'})}); await load(); } catch (err) { alert(err.message); }
+          try { await api('/api/actions/resume', {method:'POST', body: JSON.stringify({reason:'Web UI 手动恢复'})}); setFeedback('运行态已恢复', 'success'); await load(); } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const reconcileButton = document.getElementById('reconcileButton');
       if (reconcileButton && reconcileButton.dataset.bound !== 'true') {
         reconcileButton.dataset.bound = 'true';
         reconcileButton.addEventListener('click', async () => {
-          try { const result = await api('/api/actions/reconcile', {method:'POST', body: JSON.stringify({})}); alert(result.detail); await load(); } catch (err) { alert(err.message); }
+          try { const result = await api('/api/actions/reconcile', {method:'POST', body: JSON.stringify({})}); setFeedback(result.detail || '对账已完成', 'success', true); await load(); } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const topicTestButton = document.getElementById('topicTestButton');
@@ -740,9 +785,9 @@ def _render_app_html(initial_view: str = "overview") -> str:
           try {
             const result = await api('/api/actions/topic-test', {method:'POST', body: JSON.stringify({})});
             const detail = result.reason || result.stderr || result.target_link || result.target || '';
-            alert(result.sent ? ('话题发送自检成功: ' + detail) : ('话题发送自检' + (result.status || '失败') + ': ' + detail));
+            setFeedback(result.sent ? ('话题发送自检成功：' + detail) : ('话题发送自检' + (result.status || '失败') + '：' + detail), result.sent ? 'success' : 'warning', true);
             await load();
-          } catch (err) { alert(err.message); }
+          } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       const resetLocalStateButton = document.getElementById('resetLocalStateButton');
@@ -750,14 +795,14 @@ def _render_app_html(initial_view: str = "overview") -> str:
         resetLocalStateButton.dataset.bound = 'true';
         resetLocalStateButton.addEventListener('click', async () => {
           if (!confirm('确认重置本地运行态吗？这只会清理本地 DB/日志/session 状态，不会触碰任何外部 OKX demo 持仓。')) return;
-          try { const result = await api('/api/actions/reset-local-state', {method:'POST', body: JSON.stringify({})}); alert(result.detail); await load(); } catch (err) { alert(err.message); }
+          try { const result = await api('/api/actions/reset-local-state', {method:'POST', body: JSON.stringify({})}); setFeedback(result.detail || '本地运行态已重置', 'warning', true); await load(); } catch (err) { setFeedback(err.message, 'error', true); }
         });
       }
       document.querySelectorAll('[data-close-symbol]').forEach(button => {
         if (button.dataset.bound === 'true') return;
         button.dataset.bound = 'true';
         button.addEventListener('click', async e => {
-          try { await api('/api/positions/close', {method:'POST', body: JSON.stringify({symbol: e.currentTarget.dataset.closeSymbol})}); await load(); } catch (err) { alert(err.message); }
+          try { await api('/api/positions/close', {method:'POST', body: JSON.stringify({symbol: e.currentTarget.dataset.closeSymbol})}); setFeedback('指定持仓平仓请求已提交', 'success'); await load(); } catch (err) { setFeedback(err.message, 'error', true); }
         });
       });
     }

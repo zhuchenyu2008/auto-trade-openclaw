@@ -1384,6 +1384,45 @@ class AppTests(unittest.TestCase):
         self.assertEqual(snapshot["messages"][0]["status"], "MANAGEMENT_SKIPPED")
         self.assertEqual(snapshot["orders"], [])
 
+    def test_runtime_topic_risk_broadcast_uses_chinese_template(self):
+        self.runtime.update_config({"trading": {"readonly_close_only": True}})
+        with mock.patch.object(self.runtime, "_send_topic_update") as send_topic:
+            self.runtime.process_message(self._message("LONG BTCUSDT"))
+        send_topic.assert_called_once()
+        sent = send_topic.call_args.args[0]
+        self.assertIn("[风控]", sent)
+        self.assertIn("只允许平仓", sent)
+
+    def test_runtime_topic_observe_broadcast_uses_chinese_template(self):
+        self.runtime.update_config({"trading": {"mode": "observe"}})
+        with mock.patch.object(self.runtime, "_send_topic_update") as send_topic:
+            self.runtime.process_message(self._message("LONG BTCUSDT"))
+        send_topic.assert_called_once()
+        sent = send_topic.call_args.args[0]
+        self.assertIn("[观察]", sent)
+        self.assertIn("开多 BTC-USDT-SWAP", sent)
+        self.assertIn("未实际下单", sent)
+
+    def test_runtime_topic_trade_broadcast_uses_chinese_template(self):
+        with mock.patch.object(self.runtime, "_send_topic_update") as send_topic:
+            self.runtime.process_message(self._message("LONG BTCUSDT"))
+        send_topic.assert_called_once()
+        sent = send_topic.call_args.args[0]
+        self.assertIn("[交易]", sent)
+        self.assertIn("演示模式", sent)
+        self.assertIn("开多 BTC-USDT-SWAP", sent)
+        self.assertIn("已成交", sent)
+
+    def test_runtime_topic_execution_error_broadcast_uses_chinese_template(self):
+        with mock.patch.object(self.runtime.okx, "execute", side_effect=RuntimeError("bad credentials")):
+            with mock.patch.object(self.runtime, "_send_topic_update") as send_topic:
+                self.runtime.process_message(self._message("LONG BTCUSDT"))
+        self.assertGreaterEqual(send_topic.call_count, 1)
+        sent = send_topic.call_args_list[-1].args[0]
+        self.assertIn("[执行失败]", sent)
+        self.assertIn("开多 BTC-USDT-SWAP", sent)
+        self.assertIn("bad credentials", sent)
+
     def test_telegram_watcher_reports_connected_health_for_public_web_without_bot_token(self):
         self.runtime.update_config({"telegram": {"bot_token": "", "channels": [self._public_web_channel()]}})
         health_events = []
@@ -1808,6 +1847,47 @@ class AppTests(unittest.TestCase):
         self.assertFalse(intent.executable)
         self.assertEqual(intent.action, "ignore")
         self.assertEqual(intent.symbol, "")
+
+    def test_ai_prompt_uses_structured_channel_context(self):
+        ai = OpenClawAI(self.runtime.config_manager.get())
+        message = NormalizedMessage.from_public_web(
+            "lbeobhpreo",
+            "new",
+            {
+                "channel_username": "lbeobhpreo",
+                "message_id": 12010,
+                "date": "2026-03-18T00:00:00+00:00",
+                "text": "BTCUSDT 止盈：74500",
+                "caption": "",
+            },
+        )
+        prompt = ai._build_prompt(
+            message,
+            [
+                {
+                    "chat_id": "public:lbeobhpreo",
+                    "message_id": 12001,
+                    "event_type": "new",
+                    "version": 1,
+                    "text": "LONG BTCUSDT",
+                    "caption": "",
+                },
+                {
+                    "chat_id": "public:lbeobhpreo",
+                    "message_id": 12002,
+                    "event_type": "new",
+                    "version": 1,
+                    "text": "止损 69000",
+                    "caption": "",
+                },
+            ],
+            {"mode": "demo", "positions": [{"payload": {"symbol": "BTC-USDT-SWAP", "side": "long", "size": "1"}}]},
+        )
+        self.assertIn("Structured channel context:", prompt)
+        self.assertIn('"same_symbol_messages"', prompt)
+        self.assertIn('"recent_management_messages"', prompt)
+        self.assertIn('"role_hint": "management_update"', prompt)
+        self.assertNotIn("Recent channel context:", prompt)
 
     def test_non_heuristic_provider_records_fallback_metadata_when_ai_call_fails(self):
         updated = self.runtime.update_config({"ai": {"provider": "openclaw"}})
@@ -3040,6 +3120,26 @@ class AppTests(unittest.TestCase):
         self.assertEqual(updated["config"]["ai"]["timeout_seconds"], 9)
         self.assertEqual(updated["config"]["ai"]["system_prompt"], "Return strict JSON only.")
         self.assertEqual(runtime.snapshot()["config"]["ai"]["model"], "intraday-v3")
+
+    def test_web_uses_feedback_bar_instead_of_alerts(self):
+        runtime = Runtime(self.root / "config.json")
+        self.addCleanup(runtime.stop)
+        runtime.start(background=False)
+        controller = WebController(runtime)
+        status, headers, _ = controller.route(
+            "POST",
+            "/login",
+            body=b"pin=123456",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = headers["Set-Cookie"]
+
+        status, _, body = controller.route("GET", "/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn('id="feedbackBar"', body)
+        self.assertIn("function setFeedback(message, level='info', persist=false)", body)
+        self.assertNotIn("alert(", body)
 
     def test_web_invalid_json_returns_bad_request(self):
         runtime = Runtime(self.root / "config.json")

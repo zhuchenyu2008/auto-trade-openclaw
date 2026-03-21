@@ -88,6 +88,7 @@ class OpenClawAI:
         return result.stdout
 
     def _build_prompt(self, message: NormalizedMessage, recent_messages: list[dict[str, Any]], account_state: dict[str, Any]) -> str:
+        structured_context = self._build_structured_context(message, recent_messages, account_state)
         schema = {
             "executable": True,
             "action": "open_long",
@@ -122,9 +123,94 @@ class OpenClawAI:
             "Return a single JSON object with exactly these keys:\n"
             f"{json.dumps(schema, ensure_ascii=True)}\n"
             f"Message:\n{json.dumps(message.to_dict(), ensure_ascii=True)}\n"
-            f"Recent channel context:\n{json.dumps(recent_messages[-5:], ensure_ascii=True)}\n"
+            f"Structured channel context:\n{json.dumps(structured_context, ensure_ascii=True)}\n"
             f"Account state:\n{json.dumps(account_state, ensure_ascii=True)}"
         )
+
+    def _build_structured_context(
+        self,
+        message: NormalizedMessage,
+        recent_messages: list[dict[str, Any]],
+        account_state: dict[str, Any],
+    ) -> dict[str, Any]:
+        current_text = message.content_text()
+        current_upper = current_text.upper()
+        current_symbol = _extract_symbol(current_upper)
+        recent_items = [self._summarize_recent_message(item, current_symbol=current_symbol) for item in recent_messages[-6:]]
+        same_symbol = [item for item in recent_items if item.get("symbol") and item.get("symbol") == current_symbol]
+        recent_trade = [item for item in recent_items if item.get("role") in {"trade_entry", "position_change"}]
+        management_updates = [item for item in recent_items if item.get("role") == "management_update"]
+        positions = account_state.get("positions") if isinstance(account_state, dict) else []
+        structured_positions = []
+        if isinstance(positions, list):
+            for item in positions[:5]:
+                if isinstance(item, dict):
+                    payload = item.get("payload") if isinstance(item.get("payload"), dict) else item
+                    structured_positions.append(
+                        {
+                            "symbol": str(payload.get("symbol") or ""),
+                            "side": str(payload.get("side") or ""),
+                            "size": payload.get("size") or payload.get("pos") or payload.get("quantity") or 0,
+                            "entry_price": payload.get("avg_price") or payload.get("avgPx") or payload.get("entry_price"),
+                            "protection": {
+                                "tp": payload.get("tp"),
+                                "sl": payload.get("sl"),
+                                "trailing": payload.get("trailing"),
+                            },
+                        }
+                    )
+        return {
+            "channel": {
+                "chat_id": message.chat_id,
+                "adapter": message.adapter,
+                "recent_messages_considered": len(recent_items),
+            },
+            "current_message": {
+                "message_id": message.message_id,
+                "event_type": message.event_type,
+                "version": message.version,
+                "symbol_hint": current_symbol or "",
+                "role_hint": self._classify_message_role(current_upper),
+                "text": current_text[:280],
+            },
+            "recent_context": {
+                "same_symbol_messages": same_symbol[-3:],
+                "recent_trade_messages": recent_trade[-3:],
+                "recent_management_messages": management_updates[-3:],
+                "latest_messages": recent_items[-5:],
+            },
+            "account_summary": {
+                "mode": str(account_state.get("mode") or ""),
+                "open_positions": structured_positions,
+            },
+        }
+
+    def _summarize_recent_message(self, item: dict[str, Any], *, current_symbol: str) -> dict[str, Any]:
+        text = str(item.get("text") or item.get("caption") or "").strip()
+        upper = text.upper()
+        symbol = _extract_symbol(upper)
+        return {
+            "message_id": int(item.get("message_id") or 0),
+            "event_type": str(item.get("event_type") or ""),
+            "version": int(item.get("version") or 1),
+            "symbol": symbol or "",
+            "role": self._classify_message_role(upper),
+            "same_symbol_as_current": bool(current_symbol and symbol == current_symbol),
+            "text": text[:160],
+        }
+
+    def _classify_message_role(self, upper_text: str) -> str:
+        if not upper_text.strip():
+            return "empty"
+        if any(keyword in upper_text for keyword in ("止盈", "止损", "保本", "BREAKEVEN", "TRAILING", "TP", "SL", "TARGET")):
+            return "management_update"
+        if any(keyword in upper_text for keyword in ("REDUCE", "PARTIAL", "平一半", "减仓", "CLOSE", "REVERSE", "FLIP", "ADD")):
+            return "position_change"
+        if any(keyword in upper_text for keyword in ("LONG", "SHORT", "BUY", "SELL", "开多", "开空", "做多", "做空", "市价多", "市价空")):
+            return "trade_entry"
+        if any(keyword in upper_text for keyword in ("WAIT", "HOLD", "IGNORE", "观望", "等待", "暂不", "不追")):
+            return "broadcast_or_ignore"
+        return "unknown"
 
     def _heuristic_parse(self, message: NormalizedMessage) -> TradingIntent:
         text = message.content_text().strip()

@@ -294,11 +294,11 @@ class Runtime:
             log_level = "info" if status in {"IGNORED", "MANAGEMENT_SKIPPED"} else "warn"
             self.log(log_level, "risk", risk.reason, {"code": risk.code, "idempotency_key": risk.idempotency_key})
             if status == "MANAGEMENT_SKIPPED":
-                self._send_topic_update(f"[管理消息] 已识别为管理/保护更新，当前不按新开仓执行：{risk.reason}")
+                self._send_topic_update(f"[管理消息] 已识别为管理/保护更新，当前不按新开仓执行：{self._topic_localize_risk_reason(risk.code, risk.reason)}")
             elif status == "IGNORED":
-                self._send_topic_update(f"[忽略] {risk.reason}")
+                self._send_topic_update(f"[忽略] {self._topic_localize_risk_reason(risk.code, risk.reason)}")
             else:
-                self._send_topic_update(f"[risk] {risk.code}: {risk.reason}")
+                self._send_topic_update(self._topic_risk_message(risk.code, risk.reason))
             return
         if self._is_observe_only(config):
             self.storage.save_order(
@@ -317,7 +317,7 @@ class Runtime:
             )
             self.storage.update_message_status(message.chat_id, message.message_id, message.version, "OBSERVED")
             self.log("info", "execution", "Observe-only intent recorded", {"symbol": execution_intent.symbol, "action": execution_intent.action})
-            self._send_topic_update(f"[trade:observe] {execution_intent.action} {execution_intent.symbol} -> observed")
+            self._send_topic_update(self._topic_observe_message(execution_intent))
             return
         try:
             result = self.okx.execute(execution_intent, force_simulated=force_simulated)
@@ -326,7 +326,7 @@ class Runtime:
             self.log("error", "execution", "Order execution failed", {"error": str(exc), "symbol": execution_intent.symbol, "action": execution_intent.action})
             self.pause_trading("OKX execution failure triggered automatic pause")
             self._set_health("okx_rest", "error", str(exc))
-            self._send_topic_update(f"[execution:error] {execution_intent.action} {execution_intent.symbol} -> {exc}")
+            self._send_topic_update(self._topic_execution_error_message(execution_intent, exc))
             return
         self._set_health("okx_rest", "configured" if config.okx.enabled else "simulated", "Last order path succeeded")
         self.storage.save_order(risk.idempotency_key, execution_intent, config.trading.mode, result.status, result.payload, result.exchange_order_id)
@@ -334,7 +334,7 @@ class Runtime:
             self.storage.save_position_snapshot(execution_intent.symbol, result.position_snapshot)
         self.storage.update_message_status(message.chat_id, message.message_id, message.version, "EXECUTED")
         self.log("info", "execution", "Order executed", {"order_id": result.exchange_order_id, "status": result.status, "symbol": execution_intent.symbol})
-        self._send_topic_update(f"[trade:{config.trading.mode}] {execution_intent.action} {execution_intent.symbol} -> {result.status} ({result.exchange_order_id})")
+        self._send_topic_update(self._topic_trade_message(config.trading.mode, execution_intent, result.status, result.exchange_order_id))
 
     def inject_message(
         self,
@@ -412,6 +412,89 @@ class Runtime:
         if risk_code == "ignored_signal":
             return "IGNORED"
         return "RISK_REJECTED"
+
+    def _topic_action_label(self, action: str) -> str:
+        return {
+            "open_long": "开多",
+            "open_short": "开空",
+            "add_long": "加多",
+            "add_short": "加空",
+            "reduce_long": "减多",
+            "reduce_short": "减空",
+            "reverse_to_long": "反手开多",
+            "reverse_to_short": "反手开空",
+            "close_all": "全部平仓",
+            "cancel_orders": "撤单",
+            "update_protection": "更新保护",
+            "ignore": "忽略",
+        }.get(str(action or ""), str(action or "未提供"))
+
+    def _topic_mode_label(self, mode: str) -> str:
+        return {"demo": "演示模式", "observe": "观察模式", "live": "实盘模式"}.get(str(mode or ""), str(mode or "未提供"))
+
+    def _topic_status_label(self, status: str) -> str:
+        return {
+            "observed": "仅观察记录",
+            "filled": "已成交",
+            "submitted": "已提交",
+            "canceled": "已撤销",
+            "rejected": "已拒绝",
+            "failed": "执行失败",
+        }.get(str(status or ""), str(status or "未知状态"))
+
+    def _topic_localize_risk_reason(self, risk_code: str, reason: str) -> str:
+        localized = {
+            "management_update": "识别为管理/保护更新消息，当前不按新开仓执行",
+            "ignored_signal": "识别为无需执行的消息，已跳过",
+            "close_only": "当前处于只允许平仓/撤单/保护更新模式",
+            "paused": "当前交易已暂停",
+            "manual_confirmation": "需要人工确认后才可继续执行",
+            "duplicate": "检测到重复执行意图，已忽略",
+            "invalid_action": "动作无效",
+            "invalid_symbol": "仅支持合约品种（swap/futures）",
+            "invalid_leverage": "杠杆参数无效",
+            "invalid_market_type": "仅支持合约市场类型（swap/futures）",
+            "invalid_margin_mode": "保证金模式无效",
+            "invalid_size": "可执行仓位大小必须大于 0",
+            "invalid_side": "方向与动作不匹配",
+            "live_disabled": "当前构建未启用实盘模式",
+        }.get(str(risk_code or ""))
+        return localized or str(reason or "")
+
+    def _topic_risk_message(self, risk_code: str, reason: str) -> str:
+        code_label = {
+            "close_only": "只平仓限制",
+            "paused": "运行已暂停",
+            "manual_confirmation": "待人工确认",
+            "duplicate": "重复信号",
+            "invalid_action": "动作无效",
+            "invalid_symbol": "标的无效",
+            "invalid_leverage": "杠杆无效",
+            "invalid_market_type": "市场类型无效",
+            "invalid_margin_mode": "保证金模式无效",
+            "invalid_size": "仓位大小无效",
+            "invalid_side": "方向无效",
+            "live_disabled": "实盘已禁用",
+        }.get(str(risk_code or ""), str(risk_code or "风控拦截"))
+        return f"[风控] {code_label}：{self._topic_localize_risk_reason(risk_code, reason)}"
+
+    def _topic_observe_message(self, intent: TradingIntent) -> str:
+        return (
+            f"[观察] {self._topic_action_label(intent.action)} {intent.symbol}，"
+            f"已按观察模式记录，未实际下单"
+        )
+
+    def _topic_execution_error_message(self, intent: TradingIntent, exc: Exception) -> str:
+        return (
+            f"[执行失败] {self._topic_action_label(intent.action)} {intent.symbol} 失败：{exc}"
+        )
+
+    def _topic_trade_message(self, mode: str, intent: TradingIntent, status: str, exchange_order_id: str | None) -> str:
+        order_suffix = f"（订单号 {exchange_order_id}）" if exchange_order_id else ""
+        return (
+            f"[交易] {self._topic_mode_label(mode)} / {self._topic_action_label(intent.action)} "
+            f"{intent.symbol}，状态：{self._topic_status_label(status)}{order_suffix}"
+        )
 
     def log(self, level: str, category: str, message: str, payload: dict[str, Any] | None = None, audit: bool = False) -> None:
         self.storage.log(level, category, message, payload, audit=audit)
